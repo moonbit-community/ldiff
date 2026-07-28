@@ -1,0 +1,37 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "bobzhang/ldiff"
+
+// Values
+pub fn html_page(title~ : String, String) -> String
+
+pub fn side_by_side_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int) -> String
+
+pub fn similarity(String, String) -> Int
+
+pub fn tokenize_line(String) -> Array[Tok]
+
+pub fn weight(TokKind) -> Int
+
+// Errors
+
+// Types and methods
+pub struct Tok {
+  kind : TokKind
+  text : String
+}
+pub fn Tok::kind(Self) -> TokKind
+pub fn Tok::text(Self) -> String
+
+pub(all) enum TokKind {
+  Word
+  Str
+  Punct
+  Comment
+  Filler
+  Space
+} derive(Eq)
+
+// Type aliases
+
+// Traits
+

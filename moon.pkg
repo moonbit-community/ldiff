@@ -1,0 +1,14 @@
+import {
+  "moonbitlang/core/diff",
+  "moonbitlang/lexer",
+  "moonbitlang/lexer/tokens",
+}
+
+import {
+  "moonbitlang/core/test",
+  "moonbitlang/core/debug",
+} for "test"
+
+import {
+  "moonbitlang/core/debug",
+} for "wbtest"

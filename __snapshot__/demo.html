@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>ldiff demo</title><style>
+body { font-family: monospace; }
+.hunk-header { color: #00a; }
+.del { background: #ffecec; }
+.add { background: #eaffea; }
+td.empty { background: #fafafa; }
+b.wd { background: #f8b4b4; font-weight: normal; }
+b.wa { background: #97e0a0; font-weight: normal; }
+table.split { border-collapse: collapse; width: 100%; }
+table.split td { width: 50%; vertical-align: top;
+  white-space: pre-wrap; border: 1px solid #eee; }
+</style></head><body>
+<table class="split">
+<tr><td class="hunk-header" colspan="2">@@ -1,8 +1,8 @@</td></tr>
+<tr><td class="del">///| sum with <b class="wd">default</b></td><td class="add">///| sum with <b class="wa">tax</b></td></tr>
+<tr><td class="del">pub fn total(items : Array[Item]) -&gt; Int {</td><td class="add">pub fn total(items : Array[Item]<b class="wa">, tax~ : Int</b>) -&gt; Int {</td></tr>
+<tr><td class="ctx">  let mut sum = 0</td><td class="ctx">  let mut sum = 0</td></tr>
+<tr><td class="ctx">  for item in items {</td><td class="ctx">  for item in items {</td></tr>
+<tr><td class="del">    sum += item.price * item.count</td><td class="add">    sum += item.price * item.count<b class="wa"> + tax</b></td></tr>
+<tr><td class="ctx">  }</td><td class="ctx">  }</td></tr>
+<tr><td class="ctx">  sum // final</td><td class="ctx">  sum // final</td></tr>
+<tr><td class="ctx">}</td><td class="ctx">}</td></tr>
+</table>
+</body></html>
