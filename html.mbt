@@ -71,8 +71,9 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
 /// Render a replacement block (paired rows and gaps) into the split table.
 /// Budget discipline: dimension guards first, then a per-line token cap
 /// (which also bounds every budget term, so the counter cannot overflow),
-/// then an early-exit cell budget; over budget the block renders as PLAIN
-/// unpaired rows. Selected pairs get a per-pair traceback guard.
+/// then an early-exit cell budget; over budget the whole block renders as
+/// PLAIN unpaired rows. Selected pairs additionally get a per-pair traceback
+/// guard: an oversized pair stays paired but is rendered without highlights.
 fn split_replacement(
   buf : StringBuilder,
   old_lines : ArrayView[String],
@@ -217,11 +218,134 @@ pub fn html_page(title~ : String, body : String) -> String {
   buf <+ "td.empty { background: #fafafa; }\n"
   buf <+ "b.wd { background: #f8b4b4; font-weight: normal; }\n"
   buf <+ "b.wa { background: #97e0a0; font-weight: normal; }\n"
+  buf <+ "pre.unified span { display: block; }\n"
   buf <+ "table.split { border-collapse: collapse; width: 100%; }\n"
   buf <+ "table.split td { width: 50%; vertical-align: top;\n"
   buf <+ "  white-space: pre-wrap; border: 1px solid #eee; }\n"
   buf <+ "</style></head><body>\n"
   buf <+ "\{body}"
   buf <+ "</body></html>\n"
+  buf.to_string()
+}
+
+///|
+/// Unified (single-column) view of a diff: hunk headers followed by
+/// ` `/`-`/`+`-prefixed lines, with the same weighted alignment and
+/// word-level highlights as the split view — deletions of a replacement
+/// block first, then its insertions. Wrap the result in `<pre>` or use
+/// `html_page`.
+pub fn unified_html(
+  old~ : ArrayView[String],
+  new~ : ArrayView[String],
+  context? : Int = 3,
+) -> String {
+  let buf = StringBuilder::new()
+  fn line(cls : String, prefix : String, body : String) {
+    buf <+ "<span class=\"\{cls}\">\{prefix}\{body}</span>\n"
+  }
+
+  buf <+ "<pre class=\"unified\">\n"
+  for h in @diff.Diff(old~, new~).group(context~) {
+    buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
+    let edits = h.edits()
+    let o = h.old_view()
+    let n = h.new_view()
+    let mut i = 0
+    while i < edits.length() {
+      match edits[i] {
+        Delete(old_index~, old_len~, ..) if i + 1 < edits.length() &&
+          edits[i + 1] is Insert(..) => {
+          guard edits[i + 1] is Insert(new_index~, new_len~, ..)
+          let old_lines = o.view(start=old_index, end=old_index + old_len)
+          let new_lines = n.view(start=new_index, end=new_index + new_len)
+          let mut fallback = old_lines.length() > 64 || new_lines.length() > 64
+          let olds : Array[Array[Tok]] = []
+          let news : Array[Array[Tok]] = []
+          if !fallback {
+            cap~: for l in old_lines {
+              let t = tokenize_line(l)
+              if t.length() > 1024 {
+                fallback = true
+                break cap~
+              }
+              olds.push(t)
+            }
+          }
+          if !fallback {
+            cap~: for l in new_lines {
+              let t = tokenize_line(l)
+              if t.length() > 1024 {
+                fallback = true
+                break cap~
+              }
+              news.push(t)
+            }
+          }
+          if !fallback {
+            let mut work = 0
+            budget~: for ta in olds {
+              for tb in news {
+                work += (ta.length() + 1) * (tb.length() + 1)
+                if work > 2_000_000 {
+                  fallback = true
+                  break budget~
+                }
+              }
+            }
+          }
+          if fallback {
+            for l in old_lines {
+              line("del", "-", esc(l))
+            }
+            for l in new_lines {
+              line("add", "+", esc(l))
+            }
+          } else {
+            let pairs = align(olds, news)
+            let rights : Array[String] = []
+            for pair in pairs {
+              match pair {
+                (Some(ii), Some(jj)) =>
+                  if (olds[ii].length() + 1) * (news[jj].length() + 1) > 262144 {
+                    line("del", "-", esc(old_lines[ii]))
+                    rights.push(esc(new_lines[jj]))
+                  } else {
+                    let (lh, rh) = pair_row_html(pair_ops(olds[ii], news[jj]))
+                    line("del", "-", lh)
+                    rights.push(rh)
+                  }
+                (Some(ii), None) => line("del", "-", esc(old_lines[ii]))
+                (None, Some(jj)) => rights.push(esc(new_lines[jj]))
+                (None, None) => ()
+              }
+            }
+            for r in rights {
+              line("add", "+", r)
+            }
+          }
+          i += 2
+        }
+        Equal(old_index~, len~, ..) => {
+          for l in o.view(start=old_index, end=old_index + len) {
+            line("ctx", " ", esc(l))
+          }
+          i += 1
+        }
+        Delete(old_index~, old_len~, ..) => {
+          for l in o.view(start=old_index, end=old_index + old_len) {
+            line("del", "-", esc(l))
+          }
+          i += 1
+        }
+        Insert(new_index~, new_len~, ..) => {
+          for l in n.view(start=new_index, end=new_index + new_len) {
+            line("add", "+", esc(l))
+          }
+          i += 1
+        }
+      }
+    }
+  }
+  buf <+ "</pre>\n"
   buf.to_string()
 }

@@ -68,3 +68,19 @@ test "pair_ops reconstruction property" {
     assert_eq(right.to_string(), ob)
   }
 }
+
+///|
+test "strong crossing pair beats weak monotone pairs" {
+  // The strong pair sits on the anti-diagonal; taking it forbids the weak
+  // diagonal pairs. Margin scoring must still prefer it.
+  let olds = ["unrelated_one thing here", "let total = price * count"].map(
+    tokenize_line,
+  )
+  let news = ["let total = price * count + tax", "other_stuff entirely now"].map(
+    tokenize_line,
+  )
+  @debug.debug_inspect(
+    align(olds, news),
+    content="[(Some(0), None), (Some(1), Some(0)), (None, Some(1))]",
+  )
+}

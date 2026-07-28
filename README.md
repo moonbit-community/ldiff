@@ -13,7 +13,15 @@ let html = @ldiff.html_page(
 )
 ```
 
-See `__snapshot__/demo.html` for rendered output (open it in a browser).
+`unified_html` renders the same alignment as a single-column view. See
+`__snapshot__/demo.html` for rendered output (open it in a browser).
+
+Notes:
+- `html_page` inserts `body` verbatim (it is your rendered HTML); only pass
+  it output from this library or HTML you trust.
+- Lines are lexed independently. This is safe for MoonBit (a line-oriented
+  language with no block comments); multiline raw strings (`#|`) lex as one
+  `Str` token per line.
 
 ## How it works
 

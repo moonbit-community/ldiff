@@ -10,6 +10,8 @@ pub fn similarity(String, String) -> Int
 
 pub fn tokenize_line(String) -> Array[Tok]
 
+pub fn unified_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int) -> String
+
 pub fn weight(TokKind) -> Int
 
 // Errors
@@ -29,6 +31,7 @@ pub(all) enum TokKind {
   Comment
   Filler
   Space
+  Marker
 } derive(Eq)
 
 // Type aliases

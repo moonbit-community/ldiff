@@ -24,6 +24,7 @@ pub(all) enum TokKind {
   Comment // content tokens inside a comment (tokenized, never opaque)
   Filler // comment boilerplate: `//` markers and comment whitespace
   Space // inter-token whitespace (reconstructed from lexer position gaps)
+  Marker // the `///|` block separator (full weight: structural, not prose)
 } derive(Eq)
 
 ///|
@@ -49,7 +50,7 @@ pub fn Tok::text(self : Tok) -> String {
 /// results are bit-identical on every backend).
 pub fn weight(k : TokKind) -> Int {
   match k {
-    Word | Str => 20
+    Word | Str | Marker => 20
     Punct => 6
     Comment => 2
     Space => 1
@@ -99,6 +100,19 @@ fn classify(tok : @tokens.Token, text : String) -> TokKind {
     | INTERP(_)
     | REGEX_LITERAL(_)
     | REGEX_INTERP(_) => Str
+    // identifier-like tokens are Word regardless of spelling (Unicode
+    // identifiers must not fall through to Punct), and attributes /
+    // package references carry identifier-grade signal
+    LIDENT(_)
+    | UIDENT(_)
+    | POST_LABEL(_)
+    | DOT_LIDENT(_)
+    | DOT_UIDENT(_)
+    | PACKAGE_NAME(_)
+    | ATTRIBUTE(_)
+    | INT(_)
+    | FLOAT(_)
+    | DOUBLE(_) => Word
     _ =>
       match text {
         [c, ..] if (c >= 'a' && c <= 'z') ||
@@ -140,7 +154,13 @@ pub fn tokenize_line(line : String) -> Array[Tok] {
     }
     let text = line.view(start_offset=sp.cnum, end_offset=ep.cnum).to_owned()
     match tok {
-      COMMENT(_) => push_comment_tokens(toks, text)
+      COMMENT(_) =>
+        if text is ['/', '/', '/', '|', ..] {
+          toks.push({ kind: Marker, text: "///|" })
+          push_comment_tokens(toks, text.view(start_offset=4).to_owned())
+        } else {
+          push_comment_tokens(toks, text)
+        }
       _ => toks.push({ kind: classify(tok, text), text })
     }
     prev_end = ep.cnum

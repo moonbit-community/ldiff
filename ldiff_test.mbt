@@ -126,8 +126,90 @@ test "complete page demo" (t : @test.Test) {
       "  let mut sum = 0", "  for item in items {", "    sum += item.price * item.count + tax",
       "  }", "  sum // final", "}",
     ][:]
-  t.write(
-    @ldiff.html_page(title="ldiff demo", @ldiff.side_by_side_html(old~, new~)),
-  )
+  let body = StringBuilder::new()
+  body <+ "<h3>Split view</h3>\n"
+  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "<h3>Unified view</h3>\n"
+  body <+ "\{@ldiff.unified_html(old~, new~)}"
+  // attributes, Unicode comments, HTML-special characters
+  let sp_old = [
+      "#deprecated(\"use `f` instead\")", "fn g(a : Int) -> Int { a < 3 && a > 0 } // 判断范围",
+    ][:]
+  let sp_new = [
+      "#deprecated(\"use `h` instead\")", "fn g(a : Int) -> Bool { a <= 3 && a > 0 } // 判断闭区间",
+    ][:]
+  body <+ "<h3>Attributes, Unicode, HTML-specials</h3>\n"
+  body <+ "\{@ldiff.side_by_side_html(old=sp_old, new=sp_new)}"
+  t.write(@ldiff.html_page(title="ldiff demo", body.to_string()))
   t.snapshot(filename="demo.html")
+}
+
+///|
+fn kinds_of(line : String) -> String {
+  @ldiff.tokenize_line(line)
+  .map(t => {
+    match t.kind() {
+      Word => "W"
+      Str => "S"
+      Punct => "P"
+      Comment => "C"
+      Filler => "F"
+      Space => "_"
+      Marker => "M"
+    }
+  })
+  .join("")
+}
+
+///|
+test "classification matrix" {
+  // attributes and package references carry identifier-grade weight
+  inspect(kinds_of("#deprecated(\"msg\")"), content="W")
+  inspect(kinds_of("@debug.debug_inspect(x)"), content="W_WPWP")
+  // Unicode identifiers are Word, not Punct
+  inspect(kinds_of("let 名 = 1"), content="W_W_P_W")
+  // `///|` is a full-weight structural marker
+  inspect(kinds_of("///| about"), content="MFC")
+  // string containing `//` is one Str token; unterminated is tolerated
+  inspect(kinds_of("let s = \"a//b\""), content="W_W_P_S")
+  inspect(kinds_of("\"unterminated"), content="S")
+}
+
+///|
+test "zero-mass variants" {
+  inspect(@ldiff.similarity("//", "//   ") == 0, content="true")
+  inspect(@ldiff.similarity("", "") == 1000, content="true")
+}
+
+///|
+test "comment line does not pair with a declaration" {
+  inspect(
+    @ldiff.similarity(
+      "// promoted; `output` is not (use the trait or string interpolation).", "pub extend DiffAlgorithm with Eq::{equal}",
+    ) <
+    400,
+    content="true",
+  )
+}
+
+///|
+test "split view: blank-but-present vs absent cells" {
+  let html = @ldiff.side_by_side_html(old=["foo(1)", "", "bar(2)"], new=[
+    "foo(9)", "zzz qqq www",
+  ])
+  inspect(html.contains("<td class=\"del\"></td>"), content="true")
+  inspect(html.contains("<td class=\"empty\"></td>"), content="true")
+}
+
+///|
+test "unified view mirrors the split alignment" {
+  let old = ["let total = a + b // sum", "unrelated_one"][:]
+  let new = ["let sum = a + b // sum", "other_entirely stuff"][:]
+  let html = @ldiff.unified_html(old~, new~, context=0)
+  // paired replacement: highlighted rename, deletions before insertions
+  inspect(html.contains("<b class=\"wd\">total</b>"), content="true")
+  inspect(html.contains("<b class=\"wa\">sum</b>"), content="true")
+  let del_idx = html.find("class=\"del\"").unwrap()
+  let add_idx = html.find("class=\"add\"").unwrap()
+  inspect(del_idx < add_idx, content="true")
 }

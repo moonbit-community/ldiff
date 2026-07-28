@@ -7,10 +7,12 @@ body { font-family: monospace; }
 td.empty { background: #fafafa; }
 b.wd { background: #f8b4b4; font-weight: normal; }
 b.wa { background: #97e0a0; font-weight: normal; }
+pre.unified span { display: block; }
 table.split { border-collapse: collapse; width: 100%; }
 table.split td { width: 50%; vertical-align: top;
   white-space: pre-wrap; border: 1px solid #eee; }
 </style></head><body>
+<h3>Split view</h3>
 <table class="split">
 <tr><td class="hunk-header" colspan="2">@@ -1,8 +1,8 @@</td></tr>
 <tr><td class="del">///| sum with <b class="wd">default</b></td><td class="add">///| sum with <b class="wa">tax</b></td></tr>
@@ -21,5 +23,27 @@ table.split td { width: 50%; vertical-align: top;
 <tr><td class="ctx">  }</td><td class="ctx">  }</td></tr>
 <tr><td class="ctx">  sum // final</td><td class="ctx">  sum // final</td></tr>
 <tr><td class="ctx">}</td><td class="ctx">}</td></tr>
+</table>
+<h3>Unified view</h3>
+<pre class="unified">
+<span class="hunk-header">@@ -1,8 +1,8 @@</span>
+<span class="del">-///| sum with <b class="wd">default</b></span>
+<span class="del">-pub fn total(items : Array[Item]) -&gt; Int {</span>
+<span class="add">+///| sum with <b class="wa">tax</b></span>
+<span class="add">+pub fn total(items : Array[Item]<b class="wa">, tax~ : Int</b>) -&gt; Int {</span>
+<span class="ctx">   let mut sum = 0</span>
+<span class="ctx">   for item in items {</span>
+<span class="del">-    sum += item.price * item.count</span>
+<span class="add">+    sum += item.price * item.count<b class="wa"> + tax</b></span>
+<span class="ctx">   }</span>
+<span class="ctx">   sum // final</span>
+<span class="ctx"> }</span>
+</pre>
+<h3>Attributes, Unicode, HTML-specials</h3>
+<table class="split">
+<tr><td class="hunk-header" colspan="2">@@ -1,2 +1,2 @@</td></tr>
+<tr><td class="del">#deprecated("use `f` instead")</td><td class="empty"></td></tr>
+<tr><td class="empty"></td><td class="add">#deprecated("use `h` instead")</td></tr>
+<tr><td class="del">fn g(a : Int) -&gt; <b class="wd">Int</b> { a <b class="wd">&lt;</b> 3 &amp;&amp; a &gt; 0 } // 判断<b class="wd">范围</b></td><td class="add">fn g(a : Int) -&gt; <b class="wa">Bool</b> { a <b class="wa">&lt;=</b> 3 &amp;&amp; a &gt; 0 } // 判断<b class="wa">闭区间</b></td></tr>
 </table>
 </body></html>
