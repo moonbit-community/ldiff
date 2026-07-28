@@ -8,6 +8,8 @@ import {
 
 readme = "README.md"
 
+repository = "https://github.com/bobzhang/ldiff"
+
 license = "Apache-2.0"
 
 keywords = [ "diff", "lexer", "html" ]
