@@ -9,21 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: checkout moonbitlang/core (pinned; needed until a release bundles core/diff)
-        uses: actions/checkout@v4
-        with:
-          repository: moonbitlang/core
-          ref: f526ab2559d8cb4864b77a64324088c3590ad967
-          path: core-checkout
+
       - name: install moonbit
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s nightly
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
-      - name: bundle core
-        run: moon bundle --target all --source-dir $GITHUB_WORKSPACE/core-checkout
+          
       - name: check and test
-        env:
-          MOON_CORE_OVERRIDE: ${{ github.workspace }}/core-checkout
         run: |
           moon update
           moon fmt --check
