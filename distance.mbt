@@ -113,8 +113,8 @@ fn align(
 ) -> Array[(Int?, Int?)] {
   let m = olds.length()
   let n = news.length()
-  let dp = Array::makei(m + 1, _ => Array::make(n + 1, 0))
-  let bp = Array::makei(m + 1, _ => Array::make(n + 1, 0)) // 1 diag, 2 left, 3 up
+  let dp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))
+  let bp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0)) // 1 diag, 2 left, 3 up
   for j in 1..<(n + 1) {
     bp[0][j] = 2
   }
@@ -175,8 +175,8 @@ priv enum Op {
 fn pair_ops(a : Array[Tok], b : Array[Tok]) -> Array[Op] {
   let m = a.length()
   let n = b.length()
-  let dp = Array::makei(m + 1, _ => Array::make(n + 1, 0))
-  let bp = Array::makei(m + 1, _ => Array::make(n + 1, 0))
+  let dp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))
+  let bp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))
   for j in 1..<(n + 1) {
     dp[0][j] = dp[0][j - 1] + weight(b[j - 1].kind)
     bp[0][j] = 2
