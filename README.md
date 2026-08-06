@@ -16,6 +16,11 @@ let html = @ldiff.html_page(
 `unified_html` renders the same alignment as a single-column view. See
 `__snapshot__/demo.html` for rendered output (open it in a browser).
 
+Pass `line_numbers=true` to render complete old/new line numbers. The split
+view becomes old number / old code / new number / new code; the unified view
+becomes old number / new number / code. The option is off by default, and the
+legacy renderer output remains unchanged when it is omitted.
+
 Notes:
 - `html_page` inserts `body` verbatim (it is your rendered HTML); only pass
   it output from this library or HTML you trust.

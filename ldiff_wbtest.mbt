@@ -84,3 +84,44 @@ test "strong crossing pair beats weak monotone pairs" {
     content="[(Some(0), None), (Some(1), Some(0)), (None, Some(1))]",
   )
 }
+
+///|
+test "long-line fallback is selected before the recursive lexer and is lossless" {
+  let line = "let 名 = " + "value + ".repeat(300) + "😀 < end"
+  inspect(lexer_complexity_within_limit(line), content="false")
+  assert_eq(fallback_tokenize_line(line).map(t => t.text).join(""), line)
+  assert_eq(tokenize_line(line).map(t => t.text).join(""), line)
+}
+
+///|
+test "long-line fallback preserves marker comments Unicode and empty runs" {
+  let line = "///| " + "说明/word  ".repeat(300) + "😀"
+  inspect(lexer_complexity_within_limit(line), content="false")
+  assert_eq(tokenize_line(line).map(t => t.text).join(""), line)
+  inspect(tokenize_line(line)[0].kind is Marker, content="true")
+
+  let punctuation = "(".repeat(2000) + "😀" + ")".repeat(2000)
+  inspect(lexer_complexity_within_limit(punctuation), content="false")
+  assert_eq(tokenize_line(punctuation).map(t => t.text).join(""), punctuation)
+
+  let interpolation = "\\" + "{value} + "
+  let slash_in_string = "let url = \"https://example.test/" +
+    interpolation.repeat(300) +
+    "\""
+  inspect(lexer_complexity_within_limit(slash_in_string), content="false")
+  assert_eq(
+    tokenize_line(slash_in_string).map(t => t.text).join(""),
+    slash_in_string,
+  )
+}
+
+///|
+test "fallback tokens still feed the existing alignment budgets" {
+  let old = "word + ".repeat(600) + "old"
+  let new = "word + ".repeat(600) + "new"
+  let old_tokens = tokenize_line(old)
+  let new_tokens = tokenize_line(new)
+  inspect(old_tokens.length() > 1024, content="true")
+  inspect(new_tokens.length() > 1024, content="true")
+  inspect(alignment_tokens([old], [new], line => line) is None, content="true")
+}

@@ -4,13 +4,13 @@ package "moonbit-community/ldiff"
 // Values
 pub fn html_page(title~ : String, String) -> String
 
-pub fn side_by_side_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool) -> String
+pub fn side_by_side_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool) -> String
 
 pub fn similarity(String, String) -> Int
 
 pub fn tokenize_line(String) -> Array[Tok]
 
-pub fn unified_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool) -> String
+pub fn unified_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool) -> String
 
 pub fn weight(TokKind) -> Int
 
