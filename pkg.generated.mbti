@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "bobzhang/ldiff"
+package "moonbit-community/ldiff"
 
 // Values
 pub fn html_page(title~ : String, String) -> String

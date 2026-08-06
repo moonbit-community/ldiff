@@ -1,4 +1,4 @@
-name = "bobzhang/ldiff"
+name = "moonbit-community/ldiff"
 
 version = "0.1.1"
 
@@ -8,7 +8,7 @@ import {
 
 readme = "README.md"
 
-repository = "https://github.com/bobzhang/ldiff"
+repository = "https://github.com/moonbit-community/ldiff"
 
 license = "Apache-2.0"
 
