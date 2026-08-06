@@ -8,9 +8,13 @@ td.empty { background: #fafafa; }
 b.wd { background: #f8b4b4; font-weight: normal; }
 b.wa { background: #97e0a0; font-weight: normal; }
 pre.unified span { display: block; }
-table.split { border-collapse: collapse; width: 100%; }
+table.split, table.unified { border-collapse: collapse; width: 100%; }
 table.split td { width: 50%; vertical-align: top;
   white-space: pre-wrap; border: 1px solid #eee; }
+table.unified td { vertical-align: top; white-space: pre-wrap; border: 1px solid #eee; }
+td.line-number { width: 1%; min-width: 3em; padding: 0 .5em;
+  color: #6e7781; background: #f6f8fa; text-align: right; user-select: none; }
+table.unified td:last-child { width: 100%; }
 </style></head><body>
 <style>
 .intro { max-width: 90ch; color: #333; }

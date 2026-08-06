@@ -73,6 +73,8 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
 priv struct ReplacementRow {
   old_html : String?
   new_html : String?
+  old_offset : Int?
+  new_offset : Int?
 }
 
 ///|
@@ -87,11 +89,21 @@ fn prepare_replacement(
   let rows : Array[ReplacementRow] = []
   match alignment_tokens(old_lines, new_lines, line => line.text) {
     None => {
-      for line in old_lines {
-        rows.push({ old_html: Some(esc(line.text)), new_html: None })
+      for offset, line in old_lines {
+        rows.push({
+          old_html: Some(esc(line.text)),
+          new_html: None,
+          old_offset: Some(offset),
+          new_offset: None,
+        })
       }
-      for line in new_lines {
-        rows.push({ old_html: None, new_html: Some(esc(line.text)) })
+      for offset, line in new_lines {
+        rows.push({
+          old_html: None,
+          new_html: Some(esc(line.text)),
+          old_offset: None,
+          new_offset: Some(offset),
+        })
       }
     }
     Some(tokens) =>
@@ -107,17 +119,26 @@ fn prepare_replacement(
                 pair_ops(tokens.olds[old_index], tokens.news[new_index]),
               )
             }
-            rows.push({ old_html: Some(old_html), new_html: Some(new_html) })
+            rows.push({
+              old_html: Some(old_html),
+              new_html: Some(new_html),
+              old_offset: Some(old_index),
+              new_offset: Some(new_index),
+            })
           }
           (Some(old_index), None) =>
             rows.push({
               old_html: Some(esc(old_lines[old_index].text)),
               new_html: None,
+              old_offset: Some(old_index),
+              new_offset: None,
             })
           (None, Some(new_index)) =>
             rows.push({
               old_html: None,
               new_html: Some(esc(new_lines[new_index].text)),
+              old_offset: None,
+              new_offset: Some(new_index),
             })
           (None, None) => ()
         }
@@ -127,10 +148,41 @@ fn prepare_replacement(
 }
 
 ///|
+fn line_number_text(number : Int?) -> String {
+  match number {
+    Some(value) => value.to_string()
+    None => ""
+  }
+}
+
+///|
+fn split_row(
+  buf : StringBuilder,
+  old_number : Int?,
+  old_class : String,
+  old_html : String,
+  new_number : Int?,
+  new_class : String,
+  new_html : String,
+  line_numbers : Bool,
+) -> Unit {
+  if line_numbers {
+    buf <+
+      "<tr><td class=\"line-number old-line-number\">\{line_number_text(old_number)}</td><td class=\"\{old_class}\">\{old_html}</td><td class=\"line-number new-line-number\">\{line_number_text(new_number)}</td><td class=\"\{new_class}\">\{new_html}</td></tr>\n"
+  } else {
+    buf <+
+      "<tr><td class=\"\{old_class}\">\{old_html}</td><td class=\"\{new_class}\">\{new_html}</td></tr>\n"
+  }
+}
+
+///|
 fn split_replacement(
   buf : StringBuilder,
   old_lines : ArrayView[DiffLine],
   new_lines : ArrayView[DiffLine],
+  old_start : Int,
+  new_start : Int,
+  line_numbers : Bool,
 ) -> Unit {
   for prepared in prepare_replacement(old_lines, new_lines) {
     let (old_html, old_class) = match prepared.old_html {
@@ -141,8 +193,16 @@ fn split_replacement(
       Some(body) => (body, "add")
       None => ("", "empty")
     }
-    buf <+
-      "<tr><td class=\"\{old_class}\">\{old_html}</td><td class=\"\{new_class}\">\{new_html}</td></tr>\n"
+    split_row(
+      buf,
+      prepared.old_offset.map(offset => old_start + offset + 1),
+      old_class,
+      old_html,
+      prepared.new_offset.map(offset => new_start + offset + 1),
+      new_class,
+      new_html,
+      line_numbers,
+    )
   }
 }
 
@@ -151,20 +211,29 @@ fn split_replacement(
 /// Equal lines appear on both sides; replacement blocks are aligned by
 /// weighted similarity and their paired rows carry word-level highlights;
 /// unpaired lines leave the other cell empty. Style it with `html_page` or
-/// your own CSS (classes: split, hunk-header, ctx, del, add, empty, wd, wa).
+/// your own CSS (classes: split, hunk-header, ctx, del, add, empty, wd, wa,
+/// line-number, old-line-number, new-line-number).
 /// Set `line_cleanup=true` to reopen bounded low-information equal anchors;
-/// it is disabled by default.
+/// it is disabled by default. Set `line_numbers=true` for old-number,
+/// old-code, new-number, new-code columns; it is disabled by default so the
+/// historical two-column HTML remains byte-for-byte unchanged.
 pub fn side_by_side_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
   line_cleanup? : Bool = false,
+  line_numbers? : Bool = false,
 ) -> String {
   let buf = StringBuilder::new()
   buf <+ "<table class=\"split\">\n"
   for h in rendering_diff(old, new, line_cleanup).group(context~) {
-    buf <+
-      "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
+    if line_numbers {
+      buf <+
+        "<tr><td class=\"hunk-header\" colspan=\"4\">\{esc(h.header())}</td></tr>\n"
+    } else {
+      buf <+
+        "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
+    }
     let edits = h.edits()
     let o = h.old_view()
     let n = h.new_view()
@@ -178,27 +247,54 @@ pub fn side_by_side_html(
             buf,
             o.view(start=old_index, end=old_index + old_len),
             n.view(start=new_index, end=new_index + new_len),
+            old_index,
+            new_index,
+            line_numbers,
           )
           i += 2
         }
-        Equal(old_index~, len~, ..) => {
-          for l in o.view(start=old_index, end=old_index + len) {
-            buf <+
-              "<tr><td class=\"ctx\">\{esc(l.text)}</td><td class=\"ctx\">\{esc(l.text)}</td></tr>\n"
+        Equal(old_index~, new_index~, len~) => {
+          for offset, l in o.view(start=old_index, end=old_index + len) {
+            split_row(
+              buf,
+              Some(old_index + offset + 1),
+              "ctx",
+              esc(l.text),
+              Some(new_index + offset + 1),
+              "ctx",
+              esc(l.text),
+              line_numbers,
+            )
           }
           i += 1
         }
         Delete(old_index~, old_len~, ..) => {
-          for l in o.view(start=old_index, end=old_index + old_len) {
-            buf <+
-              "<tr><td class=\"del\">\{esc(l.text)}</td><td class=\"empty\"></td></tr>\n"
+          for offset, l in o.view(start=old_index, end=old_index + old_len) {
+            split_row(
+              buf,
+              Some(old_index + offset + 1),
+              "del",
+              esc(l.text),
+              None,
+              "empty",
+              "",
+              line_numbers,
+            )
           }
           i += 1
         }
         Insert(new_index~, new_len~, ..) => {
-          for l in n.view(start=new_index, end=new_index + new_len) {
-            buf <+
-              "<tr><td class=\"empty\"></td><td class=\"add\">\{esc(l.text)}</td></tr>\n"
+          for offset, l in n.view(start=new_index, end=new_index + new_len) {
+            split_row(
+              buf,
+              None,
+              "empty",
+              "",
+              Some(new_index + offset + 1),
+              "add",
+              esc(l.text),
+              line_numbers,
+            )
           }
           i += 1
         }
@@ -224,9 +320,16 @@ pub fn html_page(title~ : String, body : String) -> String {
   buf <+ "b.wd { background: #f8b4b4; font-weight: normal; }\n"
   buf <+ "b.wa { background: #97e0a0; font-weight: normal; }\n"
   buf <+ "pre.unified span { display: block; }\n"
-  buf <+ "table.split { border-collapse: collapse; width: 100%; }\n"
+  buf <+
+    "table.split, table.unified { border-collapse: collapse; width: 100%; }\n"
   buf <+ "table.split td { width: 50%; vertical-align: top;\n"
   buf <+ "  white-space: pre-wrap; border: 1px solid #eee; }\n"
+  buf <+
+    "table.unified td { vertical-align: top; white-space: pre-wrap; border: 1px solid #eee; }\n"
+  buf <+ "td.line-number { width: 1%; min-width: 3em; padding: 0 .5em;\n"
+  buf <+
+    "  color: #6e7781; background: #f6f8fa; text-align: right; user-select: none; }\n"
+  buf <+ "table.unified td:last-child { width: 100%; }\n"
   buf <+ "</style></head><body>\n"
   buf <+ "\{body}"
   buf <+ "</body></html>\n"
@@ -239,21 +342,43 @@ pub fn html_page(title~ : String, body : String) -> String {
 /// word-level highlights as the split view — deletions of a replacement
 /// block first, then its insertions. Wrap the result in `<pre>` or use
 /// `html_page`. Set `line_cleanup=true` to opt into bounded soft-anchor
-/// cleanup; it is disabled by default.
+/// cleanup; it is disabled by default. Set `line_numbers=true` to render a
+/// three-column table containing old number, new number, and prefixed code;
+/// it is disabled by default so the historical `<pre>` HTML is unchanged.
 pub fn unified_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
   line_cleanup? : Bool = false,
+  line_numbers? : Bool = false,
 ) -> String {
   let buf = StringBuilder::new()
   fn line(cls : String, prefix : String, body : String) {
     buf <+ "<span class=\"\{cls}\">\{prefix}\{body}</span>\n"
   }
+  fn numbered_line(
+    cls : String,
+    prefix : String,
+    old_number : Int?,
+    new_number : Int?,
+    body : String,
+  ) {
+    buf <+
+      "<tr><td class=\"line-number old-line-number\">\{line_number_text(old_number)}</td><td class=\"line-number new-line-number\">\{line_number_text(new_number)}</td><td class=\"\{cls}\">\{prefix}\{body}</td></tr>\n"
+  }
 
-  buf <+ "<pre class=\"unified\">\n"
+  if line_numbers {
+    buf <+ "<table class=\"unified numbered\">\n"
+  } else {
+    buf <+ "<pre class=\"unified\">\n"
+  }
   for h in rendering_diff(old, new, line_cleanup).group(context~) {
-    buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
+    if line_numbers {
+      buf <+
+        "<tr><td class=\"hunk-header\" colspan=\"3\">\{esc(h.header())}</td></tr>\n"
+    } else {
+      buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
+    }
     let edits = h.edits()
     let o = h.old_view()
     let n = h.new_view()
@@ -268,39 +393,95 @@ pub fn unified_html(
           let prepared = prepare_replacement(old_lines, new_lines)
           for row in prepared {
             match row.old_html {
-              Some(body) => line("del", "-", body)
+              Some(body) =>
+                if line_numbers {
+                  numbered_line(
+                    "del",
+                    "-",
+                    row.old_offset.map(offset => old_index + offset + 1),
+                    None,
+                    body,
+                  )
+                } else {
+                  line("del", "-", body)
+                }
               None => ()
             }
           }
           for row in prepared {
             match row.new_html {
-              Some(body) => line("add", "+", body)
+              Some(body) =>
+                if line_numbers {
+                  numbered_line(
+                    "add",
+                    "+",
+                    None,
+                    row.new_offset.map(offset => new_index + offset + 1),
+                    body,
+                  )
+                } else {
+                  line("add", "+", body)
+                }
               None => ()
             }
           }
           i += 2
         }
-        Equal(old_index~, len~, ..) => {
-          for l in o.view(start=old_index, end=old_index + len) {
-            line("ctx", " ", esc(l.text))
+        Equal(old_index~, new_index~, len~) => {
+          for offset, l in o.view(start=old_index, end=old_index + len) {
+            if line_numbers {
+              numbered_line(
+                "ctx",
+                " ",
+                Some(old_index + offset + 1),
+                Some(new_index + offset + 1),
+                esc(l.text),
+              )
+            } else {
+              line("ctx", " ", esc(l.text))
+            }
           }
           i += 1
         }
         Delete(old_index~, old_len~, ..) => {
-          for l in o.view(start=old_index, end=old_index + old_len) {
-            line("del", "-", esc(l.text))
+          for offset, l in o.view(start=old_index, end=old_index + old_len) {
+            if line_numbers {
+              numbered_line(
+                "del",
+                "-",
+                Some(old_index + offset + 1),
+                None,
+                esc(l.text),
+              )
+            } else {
+              line("del", "-", esc(l.text))
+            }
           }
           i += 1
         }
         Insert(new_index~, new_len~, ..) => {
-          for l in n.view(start=new_index, end=new_index + new_len) {
-            line("add", "+", esc(l.text))
+          for offset, l in n.view(start=new_index, end=new_index + new_len) {
+            if line_numbers {
+              numbered_line(
+                "add",
+                "+",
+                None,
+                Some(new_index + offset + 1),
+                esc(l.text),
+              )
+            } else {
+              line("add", "+", esc(l.text))
+            }
           }
           i += 1
         }
       }
     }
   }
-  buf <+ "</pre>\n"
+  if line_numbers {
+    buf <+ "</table>\n"
+  } else {
+    buf <+ "</pre>\n"
+  }
   buf.to_string()
 }

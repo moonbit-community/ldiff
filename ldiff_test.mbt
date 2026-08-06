@@ -213,3 +213,125 @@ test "unified view mirrors the split alignment" {
   let add_idx = html.find("class=\"add\"").unwrap()
   inspect(del_idx < add_idx, content="true")
 }
+
+///|
+test "line numbers are opt-in and preserve legacy HTML when disabled" {
+  let old = ["a", "old", "same", "gone", "z"]
+  let new = ["a", "new", "same", "added", "z"]
+  assert_eq(
+    @ldiff.side_by_side_html(old~, new~, context=1),
+    @ldiff.side_by_side_html(old~, new~, context=1, line_numbers=false),
+  )
+  assert_eq(
+    @ldiff.unified_html(old~, new~, context=1),
+    @ldiff.unified_html(old~, new~, context=1, line_numbers=false),
+  )
+}
+
+///|
+test "numbered split has four columns and complete old and new positions" {
+  let html = @ldiff.side_by_side_html(
+    old=["ctx", "old <tag>", "", "tail"],
+    new=["ctx", "new & value", "inserted", "tail"],
+    context=1,
+    line_cleanup=true,
+    line_numbers=true,
+  )
+  inspect(html.contains("class=\"hunk-header\" colspan=\"4\""), content="true")
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\">1</td><td class=\"ctx\">ctx</td><td class=\"line-number new-line-number\">1</td><td class=\"ctx\">ctx</td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\">2</td><td class=\"del\">old &lt;tag&gt;</td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\">3</td><td class=\"del\"></td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number new-line-number\">3</td><td class=\"add\">inserted</td>",
+    ),
+    content="true",
+  )
+  inspect(html.contains("new &amp; value"), content="true")
+}
+
+///|
+test "numbered unified has three columns across replacements and multiple hunks" {
+  let old = ["0", "old", "2", "3", "4", "5", "6", "gone", "8"]
+  let new = ["0", "new", "2", "3", "4", "5", "6", "added", "8"]
+  let html = @ldiff.unified_html(
+    old~,
+    new~,
+    context=0,
+    line_cleanup=true,
+    line_numbers=true,
+  )
+  inspect(html.has_prefix("<table class=\"unified numbered\">"), content="true")
+  inspect(html.contains("class=\"hunk-header\" colspan=\"3\""), content="true")
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-old</td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">2</td><td class=\"add\">+new</td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\">8</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-gone</td>",
+    ),
+    content="true",
+  )
+  inspect(
+    html.contains(
+      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">8</td><td class=\"add\">+added</td>",
+    ),
+    content="true",
+  )
+}
+
+///|
+test "numbered pure add and delete use an empty number cell for the absent side" {
+  inspect(
+    @ldiff.side_by_side_html(
+      old=[],
+      new=["名", ""],
+      context=0,
+      line_numbers=true,
+    ),
+    content=(
+      #|<table class="split">
+      #|<tr><td class="hunk-header" colspan="4">@@ -0,0 +1,2 @@</td></tr>
+      #|<tr><td class="line-number old-line-number"></td><td class="empty"></td><td class="line-number new-line-number">1</td><td class="add">名</td></tr>
+      #|<tr><td class="line-number old-line-number"></td><td class="empty"></td><td class="line-number new-line-number">2</td><td class="add"></td></tr>
+      #|</table>
+      #|
+    ),
+  )
+  let deleted = @ldiff.unified_html(
+    old=["x", ""],
+    new=[],
+    context=0,
+    line_numbers=true,
+  )
+  inspect(
+    deleted.contains(
+      "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-</td>",
+    ),
+    content="true",
+  )
+}
