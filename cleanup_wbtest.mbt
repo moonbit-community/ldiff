@@ -124,3 +124,87 @@ test "lossless cleanup preserves both texts and weighted minimum cost" {
     assert_eq(ops_cost(cleaned), wdist(old_toks, new_toks))
   }
 }
+
+///|
+test "blank soft anchor is removed when coherent line pairs are stronger" {
+  let old = ["let a = old", "", "let b = old", "let c = old"]
+  let new = ["let a = new", "let b = new", "let c = new", ""]
+  @debug.debug_inspect(
+    rendering_diff(old, new, false).edits(),
+    content=(
+      #|<ArrayView:
+      #|  [
+      #|    Delete(old_index=0, old_len=1, new_index=0),
+      #|    Insert(old_index=1, new_index=0, new_len=3),
+      #|    Equal(old_index=1, new_index=3, len=1),
+      #|    Delete(old_index=2, old_len=2, new_index=4),
+      #|  ]>
+    ),
+  )
+  @debug.debug_inspect(
+    rendering_diff(old, new, true).edits(),
+    content=(
+      #|<ArrayView:
+      #|  [
+      #|    Delete(old_index=0, old_len=4, new_index=0),
+      #|    Insert(old_index=4, new_index=0, new_len=4),
+      #|  ]>
+    ),
+  )
+}
+
+///|
+test "repeated bracket soft anchor yields to meaningful exact context" {
+  let old = ["let a = old", "same line", "let b = old", "}", "let c = old", "}"]
+  let new = ["let a = new", "}", "same line", "let b = new", "let c = new", "}"]
+  @debug.debug_inspect(
+    rendering_diff(old, new, true).edits(),
+    content=(
+      #|<ArrayView:
+      #|  [
+      #|    Delete(old_index=0, old_len=1, new_index=0),
+      #|    Insert(old_index=1, new_index=0, new_len=2),
+      #|    Equal(old_index=1, new_index=2, len=1),
+      #|    Delete(old_index=2, old_len=3, new_index=3),
+      #|    Insert(old_index=5, new_index=3, new_len=2),
+      #|    Equal(old_index=5, new_index=5, len=1),
+      #|  ]>
+    ),
+  )
+}
+
+///|
+test "meaningful equal middle line remains a hard anchor" {
+  let old = ["let a = old", "same semantic anchor", "let b = old"]
+  let new = ["let a = new", "same semantic anchor", "let b = new"]
+  assert_eq(
+    rendering_diff(old, new, true).edits(),
+    rendering_diff(old, new, false).edits(),
+  )
+}
+
+///|
+test "soft equal spans are bounded and significant lines never soften" {
+  let eight = Array::make(8, "")
+  let old_eight = ["old head"] + eight + ["old tail"]
+  let new_eight = ["new head"] + eight + ["new tail"]
+  let diff_eight = @diff.Diff(old=old_eight, new=new_eight)
+  assert_true(
+    soft_equal_edits(diff_eight.edits(), old_eight, new_eight).contains(true),
+  )
+
+  let nine = Array::make(9, "")
+  let old_nine = ["old head"] + nine + ["old tail"]
+  let new_nine = ["new head"] + nine + ["new tail"]
+  let diff_nine = @diff.Diff(old=old_nine, new=new_nine)
+  assert_false(
+    soft_equal_edits(diff_nine.edits(), old_nine, new_nine).contains(true),
+  )
+
+  let old_word = ["old head", "semantic anchor", "old tail"]
+  let new_word = ["new head", "semantic anchor", "new tail"]
+  let diff_word = @diff.Diff(old=old_word, new=new_word)
+  assert_false(
+    soft_equal_edits(diff_word.edits(), old_word, new_word).contains(true),
+  )
+}
