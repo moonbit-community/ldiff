@@ -68,79 +68,81 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
 }
 
 ///|
-/// Render a replacement block (paired rows and gaps) into the split table.
-/// Budget discipline: dimension guards first, then a per-line token cap
-/// (which also bounds every budget term, so the counter cannot overflow),
-/// then an early-exit cell budget; over budget the whole block renders as
-/// PLAIN unpaired rows. Selected pairs additionally get a per-pair traceback
-/// guard: an oversized pair stays paired but is rendered without highlights.
-fn split_replacement(
-  buf : StringBuilder,
-  old_lines : ArrayView[String],
-  new_lines : ArrayView[String],
-) -> Unit {
-  fn row(l : String, lc : String, r : String, rc : String) {
-    buf <+
-      "<tr><td class=\"\{lc}\">\{l}</td><td class=\"\{rc}\">\{r}</td></tr>\n"
-  }
+/// One renderer-neutral row in a prepared replacement block. `None` means an
+/// absent side; `Some("")` is a present blank line and must remain distinct.
+priv struct ReplacementRow {
+  old_html : String?
+  new_html : String?
+}
 
-  let mut fallback = old_lines.length() > 64 || new_lines.length() > 64
-  let olds : Array[Array[Tok]] = []
-  let news : Array[Array[Tok]] = []
-  if !fallback {
-    cap~: for l in old_lines {
-      let t = tokenize_line(l)
-      if t.length() > 1024 {
-        fallback = true
-        break cap~
+///|
+/// Prepare replacement pairing and intraline markup once for both HTML
+/// views. The shared alignment budgets return plain, unpaired rows. A chosen
+/// pair beyond 262144 traceback cells remains paired but carries no `<b>`
+/// highlight, preserving the existing deterministic safety fallback.
+fn prepare_replacement(
+  old_lines : ArrayView[DiffLine],
+  new_lines : ArrayView[DiffLine],
+) -> Array[ReplacementRow] {
+  let rows : Array[ReplacementRow] = []
+  match alignment_tokens(old_lines, new_lines, line => line.text) {
+    None => {
+      for line in old_lines {
+        rows.push({ old_html: Some(esc(line.text)), new_html: None })
       }
-      olds.push(t)
-    }
-  }
-  if !fallback {
-    cap~: for l in new_lines {
-      let t = tokenize_line(l)
-      if t.length() > 1024 {
-        fallback = true
-        break cap~
+      for line in new_lines {
+        rows.push({ old_html: None, new_html: Some(esc(line.text)) })
       }
-      news.push(t)
     }
-  }
-  if !fallback {
-    let mut work = 0
-    budget~: for ta in olds {
-      for tb in news {
-        work += (ta.length() + 1) * (tb.length() + 1)
-        if work > 2_000_000 {
-          fallback = true
-          break budget~
+    Some(tokens) =>
+      for pair in align(tokens.olds, tokens.news) {
+        match pair {
+          (Some(old_index), Some(new_index)) => {
+            let (old_html, new_html) = if (tokens.olds[old_index].length() + 1) *
+              (tokens.news[new_index].length() + 1) >
+              262144 {
+              (esc(old_lines[old_index].text), esc(new_lines[new_index].text))
+            } else {
+              pair_row_html(
+                pair_ops(tokens.olds[old_index], tokens.news[new_index]),
+              )
+            }
+            rows.push({ old_html: Some(old_html), new_html: Some(new_html) })
+          }
+          (Some(old_index), None) =>
+            rows.push({
+              old_html: Some(esc(old_lines[old_index].text)),
+              new_html: None,
+            })
+          (None, Some(new_index)) =>
+            rows.push({
+              old_html: None,
+              new_html: Some(esc(new_lines[new_index].text)),
+            })
+          (None, None) => ()
         }
       }
-    }
   }
-  if fallback {
-    for l in old_lines {
-      row(esc(l), "del", "", "empty")
+  rows
+}
+
+///|
+fn split_replacement(
+  buf : StringBuilder,
+  old_lines : ArrayView[DiffLine],
+  new_lines : ArrayView[DiffLine],
+) -> Unit {
+  for prepared in prepare_replacement(old_lines, new_lines) {
+    let (old_html, old_class) = match prepared.old_html {
+      Some(body) => (body, "del")
+      None => ("", "empty")
     }
-    for l in new_lines {
-      row("", "empty", esc(l), "add")
+    let (new_html, new_class) = match prepared.new_html {
+      Some(body) => (body, "add")
+      None => ("", "empty")
     }
-  } else {
-    for pair in align(olds, news) {
-      match pair {
-        (Some(ii), Some(jj)) =>
-          if (olds[ii].length() + 1) * (news[jj].length() + 1) > 262144 {
-            row(esc(old_lines[ii]), "del", esc(new_lines[jj]), "add")
-          } else {
-            let (lh, rh) = pair_row_html(pair_ops(olds[ii], news[jj]))
-            row(lh, "del", rh, "add")
-          }
-        (Some(ii), None) => row(esc(old_lines[ii]), "del", "", "empty")
-        (None, Some(jj)) => row("", "empty", esc(new_lines[jj]), "add")
-        (None, None) => ()
-      }
-    }
+    buf <+
+      "<tr><td class=\"\{old_class}\">\{old_html}</td><td class=\"\{new_class}\">\{new_html}</td></tr>\n"
   }
 }
 
@@ -150,14 +152,17 @@ fn split_replacement(
 /// weighted similarity and their paired rows carry word-level highlights;
 /// unpaired lines leave the other cell empty. Style it with `html_page` or
 /// your own CSS (classes: split, hunk-header, ctx, del, add, empty, wd, wa).
+/// Set `line_cleanup=true` to reopen bounded low-information equal anchors;
+/// it is disabled by default.
 pub fn side_by_side_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
+  line_cleanup? : Bool = false,
 ) -> String {
   let buf = StringBuilder::new()
   buf <+ "<table class=\"split\">\n"
-  for h in @diff.Diff(old~, new~).group(context~) {
+  for h in rendering_diff(old, new, line_cleanup).group(context~) {
     buf <+
       "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
     let edits = h.edits()
@@ -179,21 +184,21 @@ pub fn side_by_side_html(
         Equal(old_index~, len~, ..) => {
           for l in o.view(start=old_index, end=old_index + len) {
             buf <+
-              "<tr><td class=\"ctx\">\{esc(l)}</td><td class=\"ctx\">\{esc(l)}</td></tr>\n"
+              "<tr><td class=\"ctx\">\{esc(l.text)}</td><td class=\"ctx\">\{esc(l.text)}</td></tr>\n"
           }
           i += 1
         }
         Delete(old_index~, old_len~, ..) => {
           for l in o.view(start=old_index, end=old_index + old_len) {
             buf <+
-              "<tr><td class=\"del\">\{esc(l)}</td><td class=\"empty\"></td></tr>\n"
+              "<tr><td class=\"del\">\{esc(l.text)}</td><td class=\"empty\"></td></tr>\n"
           }
           i += 1
         }
         Insert(new_index~, new_len~, ..) => {
           for l in n.view(start=new_index, end=new_index + new_len) {
             buf <+
-              "<tr><td class=\"empty\"></td><td class=\"add\">\{esc(l)}</td></tr>\n"
+              "<tr><td class=\"empty\"></td><td class=\"add\">\{esc(l.text)}</td></tr>\n"
           }
           i += 1
         }
@@ -233,11 +238,13 @@ pub fn html_page(title~ : String, body : String) -> String {
 /// ` `/`-`/`+`-prefixed lines, with the same weighted alignment and
 /// word-level highlights as the split view — deletions of a replacement
 /// block first, then its insertions. Wrap the result in `<pre>` or use
-/// `html_page`.
+/// `html_page`. Set `line_cleanup=true` to opt into bounded soft-anchor
+/// cleanup; it is disabled by default.
 pub fn unified_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
+  line_cleanup? : Bool = false,
 ) -> String {
   let buf = StringBuilder::new()
   fn line(cls : String, prefix : String, body : String) {
@@ -245,7 +252,7 @@ pub fn unified_html(
   }
 
   buf <+ "<pre class=\"unified\">\n"
-  for h in @diff.Diff(old~, new~).group(context~) {
+  for h in rendering_diff(old, new, line_cleanup).group(context~) {
     buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
     let edits = h.edits()
     let o = h.old_view()
@@ -258,88 +265,36 @@ pub fn unified_html(
           guard! edits[i + 1] is Insert(new_index~, new_len~, ..)
           let old_lines = o.view(start=old_index, end=old_index + old_len)
           let new_lines = n.view(start=new_index, end=new_index + new_len)
-          let mut fallback = old_lines.length() > 64 || new_lines.length() > 64
-          let olds : Array[Array[Tok]] = []
-          let news : Array[Array[Tok]] = []
-          if !fallback {
-            cap~: for l in old_lines {
-              let t = tokenize_line(l)
-              if t.length() > 1024 {
-                fallback = true
-                break cap~
-              }
-              olds.push(t)
+          let prepared = prepare_replacement(old_lines, new_lines)
+          for row in prepared {
+            match row.old_html {
+              Some(body) => line("del", "-", body)
+              None => ()
             }
           }
-          if !fallback {
-            cap~: for l in new_lines {
-              let t = tokenize_line(l)
-              if t.length() > 1024 {
-                fallback = true
-                break cap~
-              }
-              news.push(t)
-            }
-          }
-          if !fallback {
-            let mut work = 0
-            budget~: for ta in olds {
-              for tb in news {
-                work += (ta.length() + 1) * (tb.length() + 1)
-                if work > 2_000_000 {
-                  fallback = true
-                  break budget~
-                }
-              }
-            }
-          }
-          if fallback {
-            for l in old_lines {
-              line("del", "-", esc(l))
-            }
-            for l in new_lines {
-              line("add", "+", esc(l))
-            }
-          } else {
-            let pairs = align(olds, news)
-            let rights : Array[String] = []
-            for pair in pairs {
-              match pair {
-                (Some(ii), Some(jj)) =>
-                  if (olds[ii].length() + 1) * (news[jj].length() + 1) > 262144 {
-                    line("del", "-", esc(old_lines[ii]))
-                    rights.push(esc(new_lines[jj]))
-                  } else {
-                    let (lh, rh) = pair_row_html(pair_ops(olds[ii], news[jj]))
-                    line("del", "-", lh)
-                    rights.push(rh)
-                  }
-                (Some(ii), None) => line("del", "-", esc(old_lines[ii]))
-                (None, Some(jj)) => rights.push(esc(new_lines[jj]))
-                (None, None) => ()
-              }
-            }
-            for r in rights {
-              line("add", "+", r)
+          for row in prepared {
+            match row.new_html {
+              Some(body) => line("add", "+", body)
+              None => ()
             }
           }
           i += 2
         }
         Equal(old_index~, len~, ..) => {
           for l in o.view(start=old_index, end=old_index + len) {
-            line("ctx", " ", esc(l))
+            line("ctx", " ", esc(l.text))
           }
           i += 1
         }
         Delete(old_index~, old_len~, ..) => {
           for l in o.view(start=old_index, end=old_index + old_len) {
-            line("del", "-", esc(l))
+            line("del", "-", esc(l.text))
           }
           i += 1
         }
         Insert(new_index~, new_len~, ..) => {
           for l in n.view(start=new_index, end=new_index + new_len) {
-            line("add", "+", esc(l))
+            line("add", "+", esc(l.text))
           }
           i += 1
         }
