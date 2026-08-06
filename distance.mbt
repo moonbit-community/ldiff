@@ -169,10 +169,10 @@ priv enum Op {
 }
 
 ///|
-/// Full traceback for one aligned pair: the highlight script IS the scored
-/// script (score == rendering). Backward tie preference diag > left > up
-/// yields delete-before-insert forward order.
-fn pair_ops(a : Array[Tok], b : Array[Tok]) -> Array[Op] {
+/// Minimum-cost traceback for one aligned pair, before lossless boundary
+/// cleanup. Backward tie preference diag > left > up yields delete-before-
+/// insert forward order.
+fn pair_ops_min(a : ArrayView[Tok], b : ArrayView[Tok]) -> Array[Op] {
   let m = a.length()
   let n = b.length()
   let dp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))
@@ -229,5 +229,223 @@ fn pair_ops(a : Array[Tok], b : Array[Tok]) -> Array[Op] {
     }
   }
   out.rev_in_place()
+  out
+}
+
+///|
+/// One alternating chunk in a pair traceback. `PairEdit` keeps only the two
+/// reconstructed token spans; its minimum-cost operations are regenerated
+/// after lossless boundary placement.
+priv enum PairChunk {
+  PairEqual(Array[Tok])
+  PairEdit(Array[Tok], Array[Tok])
+}
+
+///|
+fn same_tok(a : Tok, b : Tok) -> Bool {
+  a.kind == b.kind && a.text == b.text
+}
+
+///|
+fn same_toks(a : ArrayView[Tok], b : ArrayView[Tok]) -> Bool {
+  if a.length() != b.length() {
+    return false
+  }
+  for i in 0..<a.length() {
+    if !same_tok(a[i], b[i]) {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn append_toks(out : Array[Tok], xs : ArrayView[Tok]) -> Unit {
+  for x in xs {
+    out.push(x)
+  }
+}
+
+///|
+fn concat_toks(
+  left : ArrayView[Tok],
+  middle : ArrayView[Tok],
+  right : ArrayView[Tok],
+) -> Array[Tok] {
+  let out : Array[Tok] = []
+  append_toks(out, left)
+  append_toks(out, middle)
+  append_toks(out, right)
+  out
+}
+
+///|
+/// Naturalness of a boundary between two adjacent token spans. The score is
+/// deliberately language-class based (not character based): line ends win,
+/// then whitespace/comment filler, punctuation, and a token-kind transition.
+fn token_boundary_score(left : Tok?, right : Tok?) -> Int {
+  match (left, right) {
+    (None, _) | (_, None) => 4
+    (Some(a), Some(b)) =>
+      if a.kind is (Space | Filler) || b.kind is (Space | Filler) {
+        3
+      } else if a.kind is Punct || b.kind is Punct {
+        2
+      } else if a.kind != b.kind {
+        1
+      } else {
+        0
+      }
+  }
+}
+
+///|
+fn edit_span_score(tokens : Array[Tok], start : Int, len : Int) -> Int {
+  if len == 0 {
+    0
+  } else {
+    token_boundary_score(tokens.get(start - 1), tokens.get(start)) +
+    token_boundary_score(tokens.get(start + len - 1), tokens.get(start + len))
+  }
+}
+
+///|
+fn ops_to_chunks(ops : ArrayView[Op]) -> Array[PairChunk] {
+  let chunks : Array[PairChunk] = [PairEqual([])]
+  let equals : Array[Tok] = []
+  let old_edit : Array[Tok] = []
+  let new_edit : Array[Tok] = []
+  let mut in_edit = false
+  fn flush_equal() {
+    if !equals.is_empty() {
+      guard! chunks.last() is Some(PairEqual(current))
+      append_toks(current, equals)
+      equals.clear()
+    }
+  }
+
+  fn flush_edit() {
+    if in_edit {
+      chunks.push(PairEdit(old_edit.copy(), new_edit.copy()))
+      chunks.push(PairEqual([]))
+      old_edit.clear()
+      new_edit.clear()
+      in_edit = false
+    }
+  }
+
+  for op in ops {
+    match op {
+      OEq(t) => {
+        flush_edit()
+        equals.push(t)
+      }
+      OSub(a, b) => {
+        flush_equal()
+        in_edit = true
+        old_edit.push(a)
+        new_edit.push(b)
+      }
+      ODel(a) => {
+        flush_equal()
+        in_edit = true
+        old_edit.push(a)
+      }
+      OIns(b) => {
+        flush_equal()
+        in_edit = true
+        new_edit.push(b)
+      }
+    }
+  }
+  flush_edit()
+  flush_equal()
+  chunks
+}
+
+///|
+/// Enumerate every left/right rotation of one edit span that leaves equal
+/// prefixes and suffixes on both reconstructions. Only candidates whose
+/// weighted edit distance is unchanged are eligible. Iteration is left to
+/// right and `>=` resolves score ties to the stable rightmost placement.
+fn cleanup_edit_chunk(
+  left : Array[Tok],
+  old_edit : Array[Tok],
+  new_edit : Array[Tok],
+  right : Array[Tok],
+) -> (Array[Tok], Array[Tok], Array[Tok], Array[Tok]) {
+  let old_all = concat_toks(left, old_edit, right)
+  let new_all = concat_toks(left, new_edit, right)
+  let old_len = old_edit.length()
+  let new_len = new_edit.length()
+  let original_cost = wdist(old_edit, new_edit)
+  let mut best_shift = 0
+  let mut best_score = edit_span_score(old_all, left.length(), old_len) +
+    edit_span_score(new_all, left.length(), new_len)
+  for shift in -left.length()..<=right.length() {
+    let start = left.length() + shift
+    let old_end = start + old_len
+    let new_end = start + new_len
+    let old_prefix = old_all.view(end=start)
+    let new_prefix = new_all.view(end=start)
+    let old_suffix = old_all.view(start=old_end)
+    let new_suffix = new_all.view(start=new_end)
+    if !same_toks(old_prefix, new_prefix) || !same_toks(old_suffix, new_suffix) {
+      continue
+    }
+    let old_candidate = old_all.view(start~, end=old_end)
+    let new_candidate = new_all.view(start~, end=new_end)
+    if wdist(old_candidate, new_candidate) != original_cost {
+      continue
+    }
+    let score = edit_span_score(old_all, start, old_len) +
+      edit_span_score(new_all, start, new_len)
+    if score >= best_score {
+      best_score = score
+      best_shift = shift
+    }
+  }
+  let start = left.length() + best_shift
+  let old_end = start + old_len
+  let new_end = start + new_len
+  (
+    old_all.view(end=start).to_owned(),
+    old_all.view(start~, end=old_end).to_owned(),
+    new_all.view(start~, end=new_end).to_owned(),
+    old_all.view(start=old_end).to_owned(),
+  )
+}
+
+///|
+/// Lossless token-boundary cleanup layered on the minimum weighted
+/// traceback. It never changes either reconstruction or the scored `wdist`;
+/// it only chooses a more natural, deterministic placement among equivalent
+/// rotations of an edit span.
+fn pair_ops(a : Array[Tok], b : Array[Tok]) -> Array[Op] {
+  let chunks = ops_to_chunks(pair_ops_min(a, b))
+  for i in 1..<(chunks.length() - 1) {
+    guard chunks[i] is PairEdit(old_edit, new_edit) else { continue }
+    guard! chunks[i - 1] is PairEqual(left)
+    guard! chunks[i + 1] is PairEqual(right)
+    let (new_left, new_old_edit, new_new_edit, new_right) = cleanup_edit_chunk(
+      left, old_edit, new_edit, right,
+    )
+    chunks[i - 1] = PairEqual(new_left)
+    chunks[i] = PairEdit(new_old_edit, new_new_edit)
+    chunks[i + 1] = PairEqual(new_right)
+  }
+  let out : Array[Op] = []
+  for chunk in chunks {
+    match chunk {
+      PairEqual(ts) =>
+        for t in ts {
+          out.push(OEq(t))
+        }
+      PairEdit(old_edit, new_edit) =>
+        for op in pair_ops_min(old_edit, new_edit) {
+          out.push(op)
+        }
+    }
+  }
   out
 }

@@ -1,0 +1,126 @@
+// Copyright 2026 International Digital Economy Academy
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+///|
+fn cleanup_op_signature(ops : ArrayView[Op]) -> String {
+  ops
+  .map(op => {
+    match op {
+      OEq(t) => "=\{t.text}"
+      OSub(a, b) => "~\{a.text}>\{b.text}"
+      ODel(t) => "-\{t.text}"
+      OIns(t) => "+\{t.text}"
+    }
+  })
+  .join("|")
+}
+
+///|
+fn reconstruct_ops(ops : ArrayView[Op]) -> (String, String) {
+  let old = StringBuilder::new()
+  let new = StringBuilder::new()
+  for op in ops {
+    match op {
+      OEq(t) => {
+        old <+ "\{t.text}"
+        new <+ "\{t.text}"
+      }
+      OSub(a, b) => {
+        old <+ "\{a.text}"
+        new <+ "\{b.text}"
+      }
+      ODel(t) => old <+ "\{t.text}"
+      OIns(t) => new <+ "\{t.text}"
+    }
+  }
+  (old.to_string(), new.to_string())
+}
+
+///|
+fn ops_cost(ops : ArrayView[Op]) -> Int {
+  let mut cost = 0
+  for op in ops {
+    cost += match op {
+      OEq(_) => 0
+      OSub(a, b) => subst_cost(a, b).unwrap()
+      ODel(t) | OIns(t) => weight(t.kind)
+    }
+  }
+  cost
+}
+
+///|
+test "lossless cleanup places repeated edits at natural right boundary" {
+  let repeated_old = tokenize_line("x x")
+  let repeated_new = tokenize_line("x")
+  inspect(
+    cleanup_op_signature(pair_ops_min(repeated_old, repeated_new)),
+    content="-x|- |=x",
+  )
+  inspect(
+    cleanup_op_signature(pair_ops(repeated_old, repeated_new)),
+    content="=x|- |-x",
+  )
+  inspect(
+    cleanup_op_signature(
+      pair_ops(tokenize_line("// foo foo"), tokenize_line("// foo")),
+    ),
+    content="=//|= |-foo|- |=foo",
+  )
+  inspect(
+    cleanup_op_signature(
+      pair_ops(tokenize_line("f((x))"), tokenize_line("f(x)")),
+    ),
+    content="=f|=(|-(|=x|=)|-)",
+  )
+}
+
+///|
+test "token boundary score follows the language-aware priority table" {
+  let word = Tok::{ kind: Word, text: "word" }
+  let string = Tok::{ kind: Str, text: "\"s\"" }
+  let punct = Tok::{ kind: Punct, text: ")" }
+  let space = Tok::{ kind: Space, text: " " }
+  let filler = Tok::{ kind: Filler, text: "//" }
+  assert_eq(token_boundary_score(None, Some(word)), 4)
+  assert_eq(token_boundary_score(Some(word), Some(space)), 3)
+  assert_eq(token_boundary_score(Some(filler), Some(word)), 3)
+  assert_eq(token_boundary_score(Some(word), Some(punct)), 2)
+  assert_eq(token_boundary_score(Some(word), Some(string)), 1)
+  assert_eq(token_boundary_score(Some(word), Some(word)), 0)
+}
+
+///|
+test "lossless cleanup preserves both texts and weighted minimum cost" {
+  for
+    pair in [
+      ("x x", "x"),
+      ("x  x", "x"),
+      ("a a a", "a a"),
+      ("// foo foo", "// foo"),
+      ("f((x))", "f(x)"),
+      ("let 名 = \"é😀\" // 注释 注释", "let 名 = \"z\" // 注释"),
+      ("", "only new"),
+    ] {
+    let (old, new) = pair
+    let old_toks = tokenize_line(old)
+    let new_toks = tokenize_line(new)
+    let minimum = pair_ops_min(old_toks, new_toks)
+    let cleaned = pair_ops(old_toks, new_toks)
+    assert_eq(reconstruct_ops(minimum), (old, new))
+    assert_eq(reconstruct_ops(cleaned), (old, new))
+    assert_eq(ops_cost(minimum), wdist(old_toks, new_toks))
+    assert_eq(ops_cost(cleaned), wdist(old_toks, new_toks))
+  }
+}
