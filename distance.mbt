@@ -161,6 +161,54 @@ fn align(
 }
 
 ///|
+/// Tokenized inputs for one bounded line-alignment window.
+priv struct AlignmentTokens {
+  olds : Array[Array[Tok]]
+  news : Array[Array[Tok]]
+}
+
+///|
+/// Apply the shared replacement-window budgets before invoking `align`:
+/// at most 64 lines per side, 1024 tokens per line, and 2M aggregate token
+/// DP cells. Returning `None` means the caller must preserve its original
+/// structure and render without inferred pairing/highlighting.
+fn[T] alignment_tokens(
+  old_lines : ArrayView[T],
+  new_lines : ArrayView[T],
+  line_text : (T) -> String,
+) -> AlignmentTokens? {
+  if old_lines.length() > 64 || new_lines.length() > 64 {
+    return None
+  }
+  let olds : Array[Array[Tok]] = []
+  for line in old_lines {
+    let toks = tokenize_line(line_text(line))
+    if toks.length() > 1024 {
+      return None
+    }
+    olds.push(toks)
+  }
+  let news : Array[Array[Tok]] = []
+  for line in new_lines {
+    let toks = tokenize_line(line_text(line))
+    if toks.length() > 1024 {
+      return None
+    }
+    news.push(toks)
+  }
+  let mut work = 0
+  for ta in olds {
+    for tb in news {
+      work += (ta.length() + 1) * (tb.length() + 1)
+      if work > 2_000_000 {
+        return None
+      }
+    }
+  }
+  Some({ olds, news })
+}
+
+///|
 priv enum Op {
   OEq(Tok)
   OSub(Tok, Tok)
