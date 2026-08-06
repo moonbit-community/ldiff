@@ -208,3 +208,227 @@ test "soft equal spans are bounded and significant lines never soften" {
     soft_equal_edits(diff_word.edits(), old_word, new_word).contains(true),
   )
 }
+
+///|
+test "cleanup comparison emphasizes visible improvements" (t : @test.Test) {
+  let body = StringBuilder::new()
+  body <+ "<style>\n"
+  body <+ ".intro { max-width: 90ch; color: #333; }\n"
+  body <+
+    ".case { margin: 2rem 0; padding-top: .5rem; border-top: 2px solid #ddd; }\n"
+  body <+ ".note { color: #555; }\n"
+  body <+
+    ".compare { width: 100%; table-layout: fixed; border-spacing: 1rem 0; }\n"
+  body <+ ".compare > tbody > tr > th { text-align: left; }\n"
+  body <+ ".compare > tbody > tr > td { width: 50%; vertical-align: top; }\n"
+  body <+
+    ".control { margin: .75rem 0; padding: .5rem; border: 1px solid #ddd; }\n"
+  body <+ ".ok { color: #176b2c; font-weight: bold; }\n"
+  body <+ "</style>\n"
+  body <+ "<h1>ldiff cleanup comparison</h1>\n"
+  body <+
+    "<p class=\"intro\">The main cases below are required to change visibly. Token cases compare the minimum weighted traceback with lossless boundary cleanup; line cases compare <code>line_cleanup=false</code> and <code>true</code>. Historical no-regression controls are collapsed at the end.</p>\n"
+
+  fn improvement(
+    title : String,
+    note : String,
+    before_label : String,
+    before : String,
+    after_label : String,
+    after : String,
+  ) -> Unit raise {
+    assert_false(before == after)
+    body <+ "<section class=\"case\"><h3>\{esc(title)}</h3>\n"
+    body <+ "<p class=\"note\">Observe: \{esc(note)}</p>\n"
+    body <+ "<table class=\"compare\"><tr>"
+    body <+ "<th>\{esc(before_label)}</th><th>\{esc(after_label)}</th>"
+    body <+
+      "</tr><tr><td>\{before}</td><td>\{after}</td></tr></table></section>\n"
+  }
+
+  fn token_table(old : String, new : String, cleaned : Bool) -> String {
+    let old_tokens = tokenize_line(old)
+    let new_tokens = tokenize_line(new)
+    let ops = if cleaned {
+      pair_ops(old_tokens, new_tokens)
+    } else {
+      pair_ops_min(old_tokens, new_tokens)
+    }
+    let (old_html, new_html) = pair_row_html(ops)
+    "<table class=\"split\"><tr><td class=\"del\">\{old_html}</td><td class=\"add\">\{new_html}</td></tr></table>"
+  }
+
+  fn token_case(
+    title : String,
+    note : String,
+    old : String,
+    new : String,
+  ) -> Unit raise {
+    improvement(
+      title,
+      note,
+      "Minimum traceback",
+      token_table(old, new, false),
+      "Lossless boundary cleanup",
+      token_table(old, new, true),
+    )
+  }
+
+  fn line_case(
+    title : String,
+    note : String,
+    expected_context : String,
+    old : Array[String],
+    new : Array[String],
+  ) -> Unit raise {
+    let before = side_by_side_html(old~, new~, context=99)
+    let after = side_by_side_html(old~, new~, context=99, line_cleanup=true)
+    assert_false(
+      before.contains(expected_context),
+      msg="raw diff unexpectedly promoted context in ‘\{title}’",
+    )
+    assert_true(
+      after.contains(expected_context),
+      msg="cleanup did not promote expected context in ‘\{title}’",
+    )
+    improvement(
+      title, note, "line_cleanup=false", before, "line_cleanup=true", after,
+    )
+  }
+
+  body <+ "<h2>Token boundary placement</h2>\n"
+  token_case(
+    "Repeated identifier", "the deletion moves from the leading copy to the trailing ‘ x’, keeping the surviving identifier at the line start",
+    "x x", "x",
+  )
+  token_case(
+    "Comment filler", "the shared // marker and spacing remain equal instead of being pulled into the edit",
+    "// foo foo", "// foo",
+  )
+  token_case(
+    "Repeated punctuation", "the removed parentheses attach to punctuation boundaries around the unchanged expression",
+    "f((x))", "f(x)",
+  )
+
+  body <+ "<h2>Realistic multi-line soft-anchor cleanup</h2>\n"
+  body <+
+    "<p class=\"intro\">These examples keep the complete function in view. Each refactor contains a low-information line that the raw diff can mistake for context and a meaningful unchanged code line that cleanup should promote instead.</p>\n"
+  line_case(
+    "Configuration parser refactor",
+    "the moved blank separator yields to the unchanged endpoint declaration, so the reader sees scanner setup and option parsing as one coherent refactor",
+    "<tr><td class=\"ctx\">  let endpoint = resolve_endpoint(scanner, defaults.endpoint)</td><td class=\"ctx\">  let endpoint = resolve_endpoint(scanner, defaults.endpoint)</td></tr>",
+    [
+      "///|", "fn load_config(input : String, defaults : Config) -> Config raise {",
+      "  guard input.trim() != \"\" else { raise ConfigError::Empty }", "  let scanner = Scanner::new(input)",
+      "  let endpoint = resolve_endpoint(scanner, defaults.endpoint)", "  let retries = parse_retries(scanner, defaults.retries)",
+      "  let timeout = parse_timeout(scanner, defaults.timeout)", "", "  validate_config(endpoint, retries, timeout)",
+      "  Config::{ endpoint, retries, timeout }", "}",
+    ],
+    [
+      "///|", "fn load_config(text : String, defaults : Config) -> Config raise {",
+      "  guard text.trim() != \"\" else { raise ConfigError::Empty }", "  let scanner = Scanner::new(text)",
+      "", "  let endpoint = resolve_endpoint(scanner, defaults.endpoint)", "  let retries = read_retries(scanner, defaults.retries)",
+      "  let timeout = read_timeout(scanner, defaults.timeout)", "  validate_config(endpoint, retries, timeout)",
+      "  Config::{ endpoint, retries, timeout }", "}",
+    ],
+  )
+  line_case(
+    "Expression lowering branch refactor",
+    "a repeated arm-closing brace yields to the stable Value fallback, so Call/Invoke, Literal, and Pipe/Pipeline changes stay grouped by semantic match arm",
+    "<tr><td class=\"ctx\">    Value(value) =&gt; lower_value(value)</td><td class=\"ctx\">    Value(value) =&gt; lower_value(value)</td></tr>",
+    [
+      "///|", "fn lower_expr(expr : Expr, context : Context) -> CoreExpr {", "  match expr {",
+      "    Call(name, args) => emit_call(name, args, context.options)", "    Value(value) => lower_value(value)",
+      "    Literal(value) => { lower_literal(value, context)", "    }", "    Pipe(lhs, rhs) => { emit_pipe(lhs, rhs)",
+      "    }", "  }", "}",
+    ],
+    [
+      "///|", "fn lower_expr(expr : Expr, context : Context) -> CoreExpr {", "  match expr {",
+      "    Invoke(callee, args) => { emit_call(callee, args, context.options)", "    }",
+      "    Value(value) => lower_value(value)", "    Literal(value) => lower_constant(value, context)",
+      "    Pipeline(input, stages) => { emit_pipeline(input, stages, context.options)",
+      "    }", "  }", "}",
+    ],
+  )
+  line_case(
+    "Authorization pipeline reorder",
+    "the repeated visual separator yields to the unchanged policy lookup, making the account-resolution, permission-check, and audit changes read in execution order",
+    "<tr><td class=\"ctx\">  let policy = policy_for(account)</td><td class=\"ctx\">  let policy = policy_for(account)</td></tr>",
+    [
+      "///|", "fn authorize(request : Request, store : Store) -> Decision raise {",
+      "  let account = store.find_account(request.account_id)", "  let policy = policy_for(account)",
+      "  ensure_allowed(policy, request.action)", "  // ----", "  let audit = build_audit(request, account)",
+      "  persist_audit(store, audit)", "  // ----", "  Decision::Allow(account.id)",
+      "}",
+    ],
+    [
+      "///|", "fn authorize(request : Request, store : Store) -> Decision raise {",
+      "  let account = store.resolve_account(request.account_id)", "  // ----", "  let policy = policy_for(account)",
+      "  check_permission(policy, request.action)", "  let audit = Audit::from_request(request, account)",
+      "  persist_audit(store, audit)", "  // ----", "  Decision::Allow(account.id)",
+      "}",
+    ],
+  )
+
+  fn historical_control(
+    title : String,
+    source : String,
+    old : Array[String],
+    new : Array[String],
+  ) -> Unit raise {
+    let without_cleanup = side_by_side_html(old~, new~, context=1)
+    let with_cleanup = side_by_side_html(
+      old~,
+      new~,
+      context=1,
+      line_cleanup=true,
+    )
+    assert_eq(without_cleanup, with_cleanup)
+    body <+
+      "<details class=\"control\"><summary><span class=\"ok\">✓ unchanged</span> \{esc(title)}</summary>\n"
+    body <+ "<p>Source: <code>\{esc(source)}</code></p>\n"
+    body <+ "\{with_cleanup}</details>\n"
+  }
+
+  body <+ "<h2>Historical no-regression controls</h2>\n"
+  body <+
+    "<p class=\"intro\">These are intentionally identical with the option off and on. They stay collapsed so controls do not dominate the visual comparison.</p>\n"
+  historical_control(
+    "token.mbt — Marker classification",
+    "2ef6788..184aef2",
+    [
+      "  Space // inter-token whitespace", "} derive(Eq)", "pub fn weight(k : TokKind) -> Int {",
+      "  match k {", "    Word | Str => 20",
+    ],
+    [
+      "  Space // inter-token whitespace", "  Marker // the `///|` block separator",
+      "} derive(Eq)", "pub fn weight(k : TokKind) -> Int {", "  match k {", "    Word | Str | Marker => 20",
+    ],
+  )
+  historical_control(
+    "distance.mbt — fixed internal DP arrays",
+    "44762b7..8068a04",
+    [
+      "  let m = olds.length()", "  let n = news.length()", "  let dp = Array::makei(m + 1, _ => Array::make(n + 1, 0))",
+      "  let bp = Array::makei(m + 1, _ => Array::make(n + 1, 0))", "  for j in 1..<(n + 1) {",
+    ],
+    [
+      "  let m = olds.length()", "  let n = news.length()", "  let dp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))",
+      "  let bp = FixedArray::makei(m + 1, _ => FixedArray::make(n + 1, 0))", "  for j in 1..<(n + 1) {",
+    ],
+  )
+  historical_control(
+    "html.mbt — guard assertion spelling",
+    "184aef2..44762b7",
+    [
+      "        Delete(old_index~, old_len~, ..) => {", "          guard edits[i + 1] is Insert(new_index~, new_len~, ..)",
+      "          split_replacement(buf, old_lines, new_lines)", "        }",
+    ],
+    [
+      "        Delete(old_index~, old_len~, ..) => {", "          guard! edits[i + 1] is Insert(new_index~, new_len~, ..)",
+      "          split_replacement(buf, old_lines, new_lines)", "        }",
+    ],
+  )
+  t.write(html_page(title="ldiff cleanup comparison", body.to_string()))
+  t.snapshot(filename="cleanup_comparison.html")
+}
