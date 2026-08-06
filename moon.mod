@@ -4,6 +4,7 @@ version = "0.1.1"
 
 import {
   "moonbitlang/lexer@0.3.11",
+  "moonbit-community/rabbita@0.14.2",
 }
 
 readme = "README.md"

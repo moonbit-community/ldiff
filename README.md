@@ -66,3 +66,36 @@ core checkout that has it:
 ```sh
 MOON_CORE_OVERRIDE=~/git/core moon test
 ```
+
+## GitHub commit playground
+
+The static Rabbita playground accepts either of these public GitHub URLs:
+
+```text
+https://github.com/{owner}/{repo}/commit/{sha}
+https://github.com/{owner}/{repo}/pull/{number}/changes/{sha}
+```
+
+Both forms compare the commit with its first parent (or an empty old side for
+a root commit). The browser fetches anonymous GitHub REST and raw-content
+endpoints, renders only MoonBit source/project files, and never accepts,
+stores, or sends a personal access token. Anonymous GitHub API rate limits
+therefore apply.
+
+Run the live development server from the Warren app directory:
+
+```sh
+cd playground
+warren dev --direct
+```
+
+Create the release site with:
+
+```sh
+cd playground
+warren build
+```
+
+The default layout is `playground/main`, `playground/public`, and the ignored
+`playground/dist` output directory, following the
+[Warren build conventions](https://github.com/moonbit-community/rabbita/blob/main/warren/README.md).

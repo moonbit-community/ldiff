@@ -1,0 +1,17 @@
+import {
+  "moonbit-community/ldiff",
+  "moonbit-community/rabbita",
+  "moonbit-community/rabbita/html",
+  "moonbit-community/rabbita/http",
+  "moonbit-community/rabbita/url",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+import {
+  "moonbit-community/rabbita/cmd",
+} for "wbtest"
+
+supported_targets = "js"
+
+pkgtype(kind: "executable")
