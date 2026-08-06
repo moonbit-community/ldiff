@@ -2,3 +2,6 @@ _build/
 target/
 .mooncakes/
 playground/dist/
+playground/node_modules/
+playground/playwright-report/
+playground/test-results/

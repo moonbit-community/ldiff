@@ -20,9 +20,16 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  max-width: 100%;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(11, 110, 105, 0.12), transparent 34rem),
     #f4f1e8;
@@ -39,8 +46,8 @@ input {
 
 button {
   border: 1px solid var(--accent);
-  border-radius: 0.55rem;
-  padding: 0.72rem 1rem;
+  border-radius: 0.45rem;
+  padding: 0.62rem 0.9rem;
   color: white;
   background: var(--accent);
   font-weight: 700;
@@ -69,9 +76,9 @@ button.compact {
 }
 
 .shell {
-  width: min(1500px, calc(100% - 2rem));
-  margin: 0 auto;
-  padding: 3rem 0 2rem;
+  min-width: 0;
+  margin: 0 1rem;
+  padding: 1rem 0 1.25rem;
 }
 
 .hero,
@@ -79,13 +86,22 @@ button.compact {
 .file-card,
 .empty-state {
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 0.6rem;
   background: var(--paper);
-  box-shadow: 0 12px 32px rgba(30, 38, 36, 0.06);
+  box-shadow: 0 5px 16px rgba(30, 38, 36, 0.045);
 }
 
 .hero {
-  padding: clamp(1.35rem, 3vw, 2.5rem);
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(28rem, 1.2fr);
+  align-items: center;
+  gap: clamp(1.25rem, 3vw, 3rem);
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+.hero-copy,
+.hero-controls {
+  min-width: 0;
 }
 
 .eyebrow {
@@ -100,14 +116,14 @@ button.compact {
 h1 {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(2rem, 5vw, 4rem);
-  line-height: 1;
-  letter-spacing: -0.055em;
+  font-size: clamp(1.75rem, 3.2vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.045em;
 }
 
 .lede {
-  max-width: 70ch;
-  margin: 1rem 0 1.8rem;
+  max-width: 62ch;
+  margin: 0.8rem 0 0;
   color: var(--muted);
   line-height: 1.55;
 }
@@ -128,8 +144,8 @@ h1 {
 .input-row input {
   min-width: 0;
   border: 1px solid #aaa594;
-  border-radius: 0.55rem;
-  padding: 0.75rem 0.9rem;
+  border-radius: 0.45rem;
+  padding: 0.65rem 0.8rem;
   background: white;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -147,11 +163,11 @@ h1 {
 
 .results,
 .empty-state {
-  margin-top: 1rem;
+  margin-top: 0.7rem;
 }
 
 .empty-state {
-  padding: 2rem;
+  padding: 1.35rem;
   color: var(--muted);
   text-align: center;
 }
@@ -181,7 +197,8 @@ h1 {
 }
 
 .commit-card {
-  padding: 1.25rem;
+  min-width: 0;
+  padding: 0.9rem;
 }
 
 .commit-title,
@@ -206,8 +223,8 @@ h1 {
 }
 
 .commit-message {
-  margin: 1rem 0;
-  padding: 0.8rem;
+  margin: 0.75rem 0;
+  padding: 0.65rem;
   border-left: 4px solid var(--accent);
   overflow: auto;
   white-space: pre-wrap;
@@ -232,8 +249,8 @@ h1 {
 
 .file-list {
   display: grid;
-  gap: 0.8rem;
-  margin-top: 0.8rem;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
 }
 
 .file-card {
@@ -242,7 +259,7 @@ h1 {
 }
 
 .file-heading {
-  padding: 0.75rem 0.9rem;
+  padding: 0.6rem 0.7rem;
   border-bottom: 1px solid transparent;
 }
 
@@ -273,47 +290,65 @@ h1 {
 }
 
 .diff-scroll {
+  min-width: 0;
   max-width: 100%;
   border-top: 1px solid var(--line);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: white;
+  overscroll-behavior-x: contain;
 }
 
 .diff-scroll table {
   width: 100%;
-  min-width: 52rem;
   border-collapse: collapse;
-  table-layout: fixed;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.5;
 }
 
-.diff-scroll td {
-  vertical-align: top;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.diff-scroll table.split {
+  min-width: 70rem;
 }
 
-.diff-scroll table.split td:not(.line-number) {
+.diff-scroll table.unified {
+  min-width: 48rem;
+}
+
+.diff-scroll td {
+  vertical-align: top;
+  white-space: pre;
+}
+
+.diff-scroll table.split td.ctx,
+.diff-scroll table.split td.del,
+.diff-scroll table.split td.add,
+.diff-scroll table.split td.empty {
   width: 50%;
+  min-width: 32rem;
   padding: 0 0.6rem;
 }
 
-.diff-scroll table.unified td:last-child {
+.diff-scroll table.unified td.ctx,
+.diff-scroll table.unified td.del,
+.diff-scroll table.unified td.add,
+.diff-scroll table.unified td.empty {
   width: 100%;
   padding: 0 0.6rem;
 }
 
 .diff-scroll td.line-number {
   width: 1%;
-  min-width: 3.4rem;
-  padding: 0 0.55rem;
+  padding: 0 0.4rem;
   border-right: 1px solid #e7e4dc;
   color: #747b7a;
   background: #f4f5f2;
   text-align: right;
   user-select: none;
+}
+
+.diff-scroll table.split td.new-line-number {
+  border-left: 2px solid #cbc7bc;
 }
 
 .diff-scroll .hunk-header {
@@ -350,23 +385,23 @@ h1 {
 }
 
 footer {
-  padding: 1.4rem 0 0.5rem;
+  padding: 1rem 0 0.25rem;
   color: var(--muted);
   text-align: center;
   font-size: 0.85rem;
 }
 
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+}
+
 @media (max-width: 700px) {
   .shell {
-    width: min(100% - 1rem, 1500px);
+    margin: 0 0.5rem;
     padding-top: 0.5rem;
-  }
-
-  .hero,
-  .commit-card,
-  .file-card,
-  .empty-state {
-    border-radius: 0.7rem;
   }
 
   .input-row {

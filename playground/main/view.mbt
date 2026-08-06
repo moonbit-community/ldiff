@@ -227,30 +227,34 @@ fn phase_view(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
 fn app_view(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
   @html.main_(class="shell", [
     @html.header(class="hero", [
-      @html.p(class="eyebrow", "ldiff playground"),
-      @html.h1("GitHub Commit Diff for MoonBit"),
-      @html.p(
-        class="lede",
-        "Compare a public commit with its first parent. Only MoonBit source and project files are rendered.",
-      ),
-      @html.form(on_submit=emit(Submit), class="commit-form", [
-        @html.label(for_="commit-url", "GitHub commit URL"),
-        @html.div(class="input-row", [
-          @html.input(
-            id="commit-url",
-            input_type=Url,
-            value=model.input,
-            placeholder="https://github.com/owner/repo/commit/abcdef1",
-            required=true,
-            on_input=value => emit(InputChanged(value)),
-          ),
-          @html.button(type_="submit", "Load diff"),
-        ]),
+      @html.div(class="hero-copy", [
+        @html.p(class="eyebrow", "ldiff playground"),
+        @html.h1("GitHub Commit Diff for MoonBit"),
+        @html.p(
+          class="lede",
+          "Compare a public commit with its first parent. Only MoonBit source and project files are rendered.",
+        ),
       ]),
-      @html.p(
-        class="privacy-note",
-        "Public repositories only. This page does not accept, store, or send personal access tokens. Anonymous GitHub API limits apply.",
-      ),
+      @html.div(class="hero-controls", [
+        @html.form(on_submit=emit(Submit), class="commit-form", [
+          @html.label(for_="commit-url", "GitHub commit URL"),
+          @html.div(class="input-row", [
+            @html.input(
+              id="commit-url",
+              input_type=Url,
+              value=model.input,
+              placeholder="https://github.com/owner/repo/commit/abcdef1",
+              required=true,
+              on_input=value => emit(InputChanged(value)),
+            ),
+            @html.button(type_="submit", "Load diff"),
+          ]),
+        ]),
+        @html.p(
+          class="privacy-note",
+          "Public repositories only. This page does not accept, store, or send personal access tokens. Anonymous GitHub API limits apply.",
+        ),
+      ]),
     ]),
     phase_view(model, emit),
     @html.footer([
