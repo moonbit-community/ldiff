@@ -1,0 +1,389 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #17202a;
+  background: #f4f1e8;
+  font-synthesis: none;
+  --ink: #17202a;
+  --muted: #65706f;
+  --paper: #fffdf7;
+  --line: #d9d3c4;
+  --accent: #0b6e69;
+  --accent-dark: #074b48;
+  --add: #e0f4e8;
+  --add-strong: #9ed8b1;
+  --del: #f9e4e0;
+  --del-strong: #efa9a0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, rgba(11, 110, 105, 0.12), transparent 34rem),
+    #f4f1e8;
+}
+
+a {
+  color: var(--accent-dark);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--accent);
+  border-radius: 0.55rem;
+  padding: 0.72rem 1rem;
+  color: white;
+  background: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-dark);
+}
+
+button.secondary,
+button.view-toggle {
+  color: var(--accent-dark);
+  background: transparent;
+}
+
+button.secondary:hover,
+button.view-toggle:hover {
+  color: white;
+  background: var(--accent-dark);
+}
+
+button.compact {
+  padding: 0.42rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.shell {
+  width: min(1500px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 3rem 0 2rem;
+}
+
+.hero,
+.commit-card,
+.file-card,
+.empty-state {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  box-shadow: 0 12px 32px rgba(30, 38, 36, 0.06);
+}
+
+.hero {
+  padding: clamp(1.35rem, 3vw, 2.5rem);
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.055em;
+}
+
+.lede {
+  max-width: 70ch;
+  margin: 1rem 0 1.8rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.commit-form label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+}
+
+.input-row input {
+  min-width: 0;
+  border: 1px solid #aaa594;
+  border-radius: 0.55rem;
+  padding: 0.75rem 0.9rem;
+  background: white;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.input-row input:focus {
+  outline: 3px solid rgba(11, 110, 105, 0.18);
+  border-color: var(--accent);
+}
+
+.privacy-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.results,
+.empty-state {
+  margin-top: 1rem;
+}
+
+.empty-state {
+  padding: 2rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-state p {
+  margin-top: 0;
+}
+
+.loading::before {
+  content: "";
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.55rem;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error {
+  color: #8b2d25;
+}
+
+.commit-card {
+  padding: 1.25rem;
+}
+
+.commit-title,
+.file-heading,
+.file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.commit-title a {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.parent {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.commit-message {
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border-left: 4px solid var(--accent);
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #f6f5ef;
+}
+
+.summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.summary-grid span,
+.file-status {
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  background: #e9ede8;
+  color: #394846;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.file-list {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.file-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-heading {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid transparent;
+}
+
+.file-heading > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.file-path {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.file-stats {
+  flex: none;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.file-message {
+  margin: 0;
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.diff-scroll {
+  max-width: 100%;
+  border-top: 1px solid var(--line);
+  overflow: auto;
+  background: white;
+}
+
+.diff-scroll table {
+  width: 100%;
+  min-width: 52rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.diff-scroll td {
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-scroll table.split td:not(.line-number) {
+  width: 50%;
+  padding: 0 0.6rem;
+}
+
+.diff-scroll table.unified td:last-child {
+  width: 100%;
+  padding: 0 0.6rem;
+}
+
+.diff-scroll td.line-number {
+  width: 1%;
+  min-width: 3.4rem;
+  padding: 0 0.55rem;
+  border-right: 1px solid #e7e4dc;
+  color: #747b7a;
+  background: #f4f5f2;
+  text-align: right;
+  user-select: none;
+}
+
+.diff-scroll .hunk-header {
+  padding: 0.25rem 0.7rem;
+  color: #315e78;
+  background: #e9f2f6;
+  font-weight: 700;
+}
+
+.diff-scroll .ctx {
+  background: white;
+}
+
+.diff-scroll .del {
+  background: var(--del);
+}
+
+.diff-scroll .add {
+  background: var(--add);
+}
+
+.diff-scroll .empty {
+  background: #f5f3ed;
+}
+
+.diff-scroll b.wd {
+  background: var(--del-strong);
+  font-weight: inherit;
+}
+
+.diff-scroll b.wa {
+  background: var(--add-strong);
+  font-weight: inherit;
+}
+
+footer {
+  padding: 1.4rem 0 0.5rem;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 700px) {
+  .shell {
+    width: min(100% - 1rem, 1500px);
+    padding-top: 0.5rem;
+  }
+
+  .hero,
+  .commit-card,
+  .file-card,
+  .empty-state {
+    border-radius: 0.7rem;
+  }
+
+  .input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .commit-title,
+  .file-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .file-actions {
+    width: 100%;
+  }
+
+  .file-actions button {
+    margin-left: auto;
+  }
+}

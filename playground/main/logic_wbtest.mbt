@@ -1,0 +1,241 @@
+// Copyright 2026 International Digital Economy Academy
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+
+///|
+extern "js" fn read_fixture(path : String) -> String =
+  #| (path) => require("node:fs").readFileSync(path, "utf8")
+
+///|
+fn fixture_file(
+  filename : String,
+  status : String,
+  previous_filename? : String,
+) -> ApiFile {
+  {
+    filename,
+    previous_filename,
+    status,
+    additions: 1,
+    deletions: 2,
+    changes: 3,
+  }
+}
+
+///|
+test "parse supported GitHub commit URL forms" {
+  guard parse_commit_url(
+      "https://github.com/moonbit-community/ldiff/commit/aBcDeF1?diff=split#files",
+    )
+    is Ok(commit) else {
+    fail("expected commit URL to parse")
+  }
+  assert_eq(commit.owner, "moonbit-community")
+  assert_eq(commit.repo, "ldiff")
+  assert_eq(commit.sha, "aBcDeF1")
+
+  guard parse_commit_url(
+      "https://github.com/moonbitlang/core/pull/42/changes/0123456789abcdef",
+    )
+    is Ok(pr) else {
+    fail("expected PR changes URL to parse")
+  }
+  assert_eq(pr.owner, "moonbitlang")
+  assert_eq(pr.repo, "core")
+  assert_eq(pr.sha, "0123456789abcdef")
+}
+
+///|
+test "reject unsupported or malformed URLs" {
+  for
+    url in [
+      "http://github.com/a/b/commit/abcdef1", "https://git.example.com/a/b/commit/abcdef1",
+      "https://github.example.com/a/b/commit/abcdef1", "https://github.com/a/b/pull/1/files",
+      "https://github.com/a/b/compare/abcdef1...abcdef2", "https://github.com/-bad/b/commit/abcdef1",
+      "https://github.com/a/bad%2Frepo/commit/abcdef1", "https://github.com/a/b/commit/abcdef",
+      "https://github.com/a/b/pull/nope/changes/abcdef1", "https://github.com/a/b/pull/0/changes/abcdef1",
+      "https://github.com:443/a/b/commit/abcdef1",
+    ] {
+    assert_true(parse_commit_url(url) is Err(_), msg=url)
+  }
+}
+
+///|
+test "filter MoonBit files including either side of a rename" {
+  for
+    path in [
+      "a.mbt", "a.mbti", "guide.mbt.md", "moon.mod", "x/moon.pkg", "moon.work", "old/moon.mod.json",
+      "moon.pkg.json", "moon.work.json",
+    ] {
+    assert_true(is_moonbit_file(path), msg=path)
+  }
+  for path in ["README.md", "moon.json", "moon.mod.toml", "a.mbt.txt"] {
+    assert_false(is_moonbit_file(path), msg=path)
+  }
+  let files = [
+    fixture_file("new.txt", "renamed", previous_filename="old.mbt"),
+    fixture_file("new.mbt", "renamed", previous_filename="old.txt"),
+    fixture_file("README.md", "modified"),
+  ]
+  assert_eq(filter_moonbit_files(files).length(), 2)
+}
+
+///|
+test "raw content URLs percent-encode each path byte" {
+  let reference = CommitRef::{
+    owner: "moonbit-community",
+    repo: "ldiff",
+    sha: "abcdef1",
+  }
+  assert_eq(
+    raw_url(reference, "abcdef1", "src/a b#中?.mbt"),
+    "https://raw.githubusercontent.com/moonbit-community/ldiff/abcdef1/src/a%20b%23%E4%B8%AD%3F.mbt",
+  )
+}
+
+///|
+test "decode local GitHub fixtures and select the first merge parent" {
+  let merge = decode_commit(
+    read_fixture("playground/main/fixtures/commit_page1.json"),
+  )
+  assert_eq(merge.sha, "abcdef1234567890abcdef1234567890abcdef12")
+  assert_eq(
+    merge.commit.message,
+    "Add playground\n\nRender public MoonBit commits.",
+  )
+  assert_eq(
+    first_parent(merge),
+    Some("1111111111111111111111111111111111111111"),
+  )
+  assert_eq(merge.files.length(), 3)
+  assert_eq(merge.files[0].previous_filename, None)
+  assert_eq(merge.files[1].previous_filename, Some("src/old_name.txt"))
+
+  let root = decode_commit(
+    read_fixture("playground/main/fixtures/root_commit.json"),
+  )
+  assert_eq(first_parent(root), None)
+  assert_eq(root.stats.additions, 2)
+}
+
+///|
+test "pagination appends file metadata and stops at GitHub's 30-page cap" {
+  let first = [fixture_file("a.mbt", "modified")]
+  let second = [fixture_file("b.mbt", "added")]
+  let merged = merge_file_pages(first, second)
+  assert_eq(merged.map(file => file.filename), ["a.mbt", "b.mbt"])
+  assert_true(should_fetch_next_page(1, 100))
+  assert_false(should_fetch_next_page(1, 99))
+  assert_false(should_fetch_next_page(30, 100))
+  assert_true(
+    commit_api_url(CommitRef::{ owner: "a", repo: "b", sha: "abcdef1" }, 30).has_suffix(
+      "?per_page=100&page=30",
+    ),
+  )
+}
+
+///|
+test "added deleted renamed merge and root commits choose the correct raw sides" {
+  let reference = CommitRef::{ owner: "owner", repo: "repo", sha: "abcdef1" }
+  let parent = Some("1111111")
+  let added = source_pair(
+    reference,
+    "2222222",
+    parent,
+    fixture_file("new.mbt", "added"),
+  )
+  assert_eq(added.old_url, None)
+  assert_true(added.new_url is Some(_))
+
+  let deleted = source_pair(
+    reference,
+    "2222222",
+    parent,
+    fixture_file("old.mbt", "removed"),
+  )
+  assert_true(deleted.old_url is Some(_))
+  assert_eq(deleted.new_url, None)
+
+  let renamed = source_pair(
+    reference,
+    "2222222",
+    parent,
+    fixture_file("new.mbt", "renamed", previous_filename="old name.mbt"),
+  )
+  assert_true(renamed.old_url.unwrap().has_suffix("/old%20name.mbt"))
+  assert_true(renamed.new_url.unwrap().has_suffix("/new.mbt"))
+
+  let root = source_pair(
+    reference,
+    "2222222",
+    None,
+    fixture_file("main.mbt", "modified"),
+  )
+  assert_eq(root.old_url, None)
+  assert_true(root.new_url is Some(_))
+}
+
+///|
+test "source validation normalizes CRLF and preserves all blank lines" {
+  guard check_source("a\r\n\r\n") is Renderable(lines) else {
+    fail("expected source to render")
+  }
+  assert_eq(lines, ["a", "", ""])
+  assert_true(check_source("a\u{0000}b") is Rejected(_))
+  assert_true(check_source("x".repeat(MAX_SOURCE_BYTES + 1)) is Rejected(_))
+  assert_true(check_source("\n".repeat(MAX_SOURCE_LINES)) is Rejected(_))
+}
+
+///|
+test "stale commit responses are discarded by generation" {
+  let model = Model::{
+    input: "https://github.com/a/b/commit/abcdef1",
+    generation: 2,
+    view_mode: Split,
+    phase: Idle,
+  }
+  let fixture = decode_commit(
+    read_fixture("playground/main/fixtures/root_commit.json"),
+  )
+  let emit : @rabbita.Emit[Msg] = @cmd.Emit(_ => @rabbita.none)
+  let (after, _) = update(model, CommitPageLoaded(1, 1, Ok(fixture)), emit)
+  assert_true(after == model)
+}
+
+///|
+test "only the first twenty matching files auto-load and stale source replies are ignored" {
+  let fixture = decode_commit(
+    read_fixture("playground/main/fixtures/root_commit.json"),
+  )
+  let files : Array[ApiFile] = []
+  for index in 0..<21 {
+    files.push(fixture_file("src/file_\{index}.mbt", "added"))
+  }
+  let emit : @rabbita.Emit[Msg] = @cmd.Emit(_ => @rabbita.none)
+  let reference = CommitRef::{
+    owner: "example",
+    repo: "root",
+    sha: fixture.sha,
+  }
+  let (view, _) = finish_commit(reference, fixture, files, 7, emit)
+  for index in 0..<20 {
+    assert_true(view.files[index].expanded)
+    assert_true(view.files[index].old_side is Ready([]))
+    assert_true(view.files[index].new_side is Loading)
+  }
+  assert_false(view.files[20].expanded)
+  assert_true(view.files[20].new_side is NotRequested)
+
+  let model = Model::{
+    input: "",
+    generation: 7,
+    view_mode: Split,
+    phase: Showing(view),
+  }
+  let (after, _) = update(model, SourceLoaded(6, 0, New, Ok("stale")), emit)
+  assert_true(after == model)
+}
