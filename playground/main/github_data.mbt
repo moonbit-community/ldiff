@@ -50,36 +50,19 @@ fn decode_commit(body : String) -> ApiCommit raise {
 }
 
 ///|
-fn path_basename(path : String) -> String {
-  match path.split("/").collect() {
-    [] => ""
-    [.., name] => name.to_owned()
+priv enum FileDiffMode {
+  MoonBitDiff
+  LineDiff
+} derive(Eq)
+
+///|
+fn file_diff_mode(file : ApiFile) -> FileDiffMode {
+  if file.filename.has_suffix(".mbt") ||
+    file.previous_filename.map(path => path.has_suffix(".mbt")).unwrap_or(false) {
+    MoonBitDiff
+  } else {
+    LineDiff
   }
-}
-
-///|
-fn is_moonbit_file(path : String) -> Bool {
-  let name = path_basename(path)
-  path.has_suffix(".mbt") ||
-  path.has_suffix(".mbti") ||
-  path.has_suffix(".mbt.md") ||
-  name == "moon.mod" ||
-  name == "moon.pkg" ||
-  name == "moon.work" ||
-  name == "moon.mod.json" ||
-  name == "moon.pkg.json" ||
-  name == "moon.work.json"
-}
-
-///|
-fn should_show_file(file : ApiFile) -> Bool {
-  is_moonbit_file(file.filename) ||
-  file.previous_filename.map(is_moonbit_file).unwrap_or(false)
-}
-
-///|
-fn filter_moonbit_files(files : ArrayView[ApiFile]) -> Array[ApiFile] {
-  files.filter(should_show_file)
 }
 
 ///|
@@ -181,12 +164,20 @@ const MAX_SOURCE_BYTES : Int = 1_048_576
 const MAX_SOURCE_LINES : Int = 20_000
 
 ///|
-fn check_source(text : String) -> CheckedSource {
+fn check_source(bytes : Bytes) -> CheckedSource {
+  if bytes.length() > MAX_SOURCE_BYTES {
+    return Rejected("Cannot render: one side is larger than 1 MiB.")
+  }
+  let text = try @utf8.decode(bytes) catch {
+    _ =>
+      return Rejected(
+        "Cannot render: the file is binary or is not valid UTF-8.",
+      )
+  } noraise {
+    text => text
+  }
   if text.contains("\u{0000}") {
     return Rejected("Cannot render: the file contains a NUL byte.")
-  }
-  if @utf8.encode(text).length() > MAX_SOURCE_BYTES {
-    return Rejected("Cannot render: one side is larger than 1 MiB.")
   }
   let mut line_count = 1
   for c in text {

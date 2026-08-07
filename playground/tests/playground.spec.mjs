@@ -20,12 +20,26 @@ const newSource = [
   "}",
 ].join("\n");
 
+const oldReadme = [
+  "# Project notes",
+  "Use the <old> workflow.",
+  "Keep this line.",
+].join("\r\n");
+
+const newReadme = [
+  "# Project notes",
+  "Use the &new workflow.",
+  "Keep this line.",
+].join("\r\n");
+
+const binarySource = Buffer.from([0xff, 0x00, 0x01, 0x02]);
+
 const apiCommit = {
   sha: commitSha,
   html_url: commitUrl,
   commit: { message: "Make the playground diff easier to scan" },
   parents: [{ sha: parentSha }],
-  stats: { additions: 2, deletions: 2, total: 4 },
+  stats: { additions: 4, deletions: 4, total: 8 },
   files: [
     {
       filename: "src/format_change.mbt",
@@ -34,10 +48,24 @@ const apiCommit = {
       deletions: 2,
       changes: 4,
     },
+    {
+      filename: "README.md",
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      changes: 2,
+    },
+    {
+      filename: "assets/logo.bin",
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      changes: 2,
+    },
   ],
 };
 
-async function loadMockedCommit(page) {
+async function installMockRoutes(page) {
   await page.route("https://**", route => route.abort("blockedbyclient"));
   await page.route("https://api.github.com/**", async route => {
     await route.fulfill({
@@ -48,15 +76,32 @@ async function loadMockedCommit(page) {
     });
   });
   await page.route("https://raw.githubusercontent.com/**", async route => {
-    const revision = new URL(route.request().url()).pathname.split("/")[3];
+    const parts = new URL(route.request().url()).pathname.split("/");
+    const revision = parts[3];
+    const filename = decodeURIComponent(parts.slice(4).join("/"));
+    if (filename === "assets/logo.bin") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/octet-stream",
+        headers: { "access-control-allow-origin": "*" },
+        body: binarySource,
+      });
+      return;
+    }
+    const body = filename === "README.md"
+      ? (revision === parentSha ? oldReadme : newReadme)
+      : (revision === parentSha ? oldSource : newSource);
     await route.fulfill({
       status: 200,
       contentType: "text/plain",
       headers: { "access-control-allow-origin": "*" },
-      body: revision === parentSha ? oldSource : newSource,
+      body,
     });
   });
+}
 
+async function loadMockedCommit(page) {
+  await installMockRoutes(page);
   await page.goto("/");
   await page.getByLabel("Public GitHub commit URL").fill(commitUrl);
   await page.getByRole("button", { name: "View diff" }).click();
@@ -64,24 +109,7 @@ async function loadMockedCommit(page) {
 }
 
 async function openMockedShareLink(page) {
-  await page.route("https://**", route => route.abort("blockedbyclient"));
-  await page.route("https://api.github.com/**", async route => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: { "access-control-allow-origin": "*" },
-      body: JSON.stringify(apiCommit),
-    });
-  });
-  await page.route("https://raw.githubusercontent.com/**", async route => {
-    const revision = new URL(route.request().url()).pathname.split("/")[3];
-    await route.fulfill({
-      status: 200,
-      contentType: "text/plain",
-      headers: { "access-control-allow-origin": "*" },
-      body: revision === parentSha ? oldSource : newSource,
-    });
-  });
+  await installMockRoutes(page);
   await page.goto(`/#/example/project/commit/${commitSha}`);
   await expect(page.locator("table.split")).toBeVisible();
 }
@@ -149,6 +177,44 @@ test("desktop keeps split columns balanced and switches views", async ({ page })
   await expect(page.locator("table.split")).toBeVisible();
 });
 
+test("mixed commits use lazy line diffs and preserve binary file cards", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loadMockedCommit(page);
+
+  const cards = page.locator(".file-card");
+  const moonbitCard = cards.filter({ hasText: "src/format_change.mbt" });
+  const readmeCard = cards.filter({ hasText: "README.md" });
+  const binaryCard = cards.filter({ hasText: "assets/logo.bin" });
+
+  await expect(cards).toHaveCount(3);
+  await expect(page.locator(".file-path")).toHaveText([
+    "src/format_change.mbt",
+    "README.md",
+    "assets/logo.bin",
+  ]);
+  await expect(moonbitCard.locator("table.split")).toBeVisible();
+  expect(await moonbitCard.locator("b.wd, b.wa").count()).toBeGreaterThan(0);
+  await expect(readmeCard.getByRole("button", { name: "Expand" })).toBeVisible();
+  await expect(binaryCard.getByRole("button", { name: "Expand" })).toBeVisible();
+  await expect(page.locator(".diff-scroll")).toHaveCount(1);
+
+  await readmeCard.getByRole("button", { name: "Expand" }).click();
+  await expect(readmeCard.locator("table.split")).toBeVisible();
+  await expect(readmeCard.locator("td.del")).toContainText("Use the <old> workflow.");
+  await expect(readmeCard.locator("td.add")).toContainText("Use the &new workflow.");
+  await expect(readmeCard.locator("b.wd, b.wa")).toHaveCount(0);
+
+  await binaryCard.getByRole("button", { name: "Expand" }).click();
+  await expect(binaryCard).toContainText("Cannot render: the file is binary or is not valid UTF-8.");
+  await expect(binaryCard.locator(".diff-scroll")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Use unified view" }).click();
+  await expect(moonbitCard.locator("table.unified")).toBeVisible();
+  await expect(readmeCard.locator("table.unified")).toBeVisible();
+  await expect(page.locator("table.unified")).toHaveCount(2);
+  await expect(readmeCard.locator("b.wd, b.wa")).toHaveCount(0);
+});
+
 test("a shared playground URL restores the commit and can be copied", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -202,7 +268,10 @@ test("narrow viewport scrolls only the diff and keeps controls usable", async ({
   });
   expect(await scroller.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
 
-  const fileButton = page.locator(".file-card button");
+  const fileButton = page
+    .locator(".file-card")
+    .filter({ hasText: "src/format_change.mbt" })
+    .locator("button.secondary.compact");
   await fileButton.click();
   await expect(page.locator(".file-card .diff-scroll")).toHaveCount(0);
   await expect(fileButton).toHaveText("Expand");

@@ -135,7 +135,7 @@ fn hero_view(
           @html.fragment([
             @html.p(
               class="lede",
-              "Review MoonBit changes from a public GitHub commit in a fast, focused diff — then share the exact playground URL with anyone.",
+              "Review text changes from a public GitHub commit in a fast, focused diff — then share the exact playground URL with anyone.",
             ),
             route_example(),
           ])
@@ -189,8 +189,8 @@ fn file_diff_view(
   }
   match (file.old_side, file.new_side) {
     (Ready(old), Ready(new)) => {
-      let rendered = match mode {
-        Split =>
+      let rendered = match (file.diff_mode, mode) {
+        (MoonBitDiff, Split) =>
           @ldiff.side_by_side_html(
             old~,
             new~,
@@ -198,7 +198,7 @@ fn file_diff_view(
             line_cleanup=true,
             line_numbers=true,
           )
-        Unified =>
+        (MoonBitDiff, Unified) =>
           @ldiff.unified_html(
             old~,
             new~,
@@ -206,6 +206,15 @@ fn file_diff_view(
             line_cleanup=true,
             line_numbers=true,
           )
+        (LineDiff, Split) =>
+          @ldiff.side_by_side_line_html(
+            old~,
+            new~,
+            context=3,
+            line_numbers=true,
+          )
+        (LineDiff, Unified) =>
+          @ldiff.unified_line_html(old~, new~, context=3, line_numbers=true)
       }
       // `rendered` is the only raw HTML accepted by the application. ldiff
       // has already escaped every source line and hunk header.
@@ -365,14 +374,14 @@ fn commit_view(
           "−\{commit.stats.deletions} deletions",
         ),
         @html.span("\{commit.total_files} files processed"),
-        @html.span("\{commit.files.length()} MoonBit files shown"),
+        @html.span("\{commit.files.length()} changed files shown"),
       ]),
       share_view(model, emit),
     ]),
     if commit.files.length() == 0 {
       @html.div(
         class="empty-state",
-        "No MoonBit source or MoonBit project files were changed by this commit.",
+        "No changed files were returned for this commit.",
       )
     } else {
       @html.div(class="file-list", file_views)
@@ -421,7 +430,7 @@ fn app_view(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
     hero_view(model, landing, emit),
     phase_view(model, emit),
     @html.footer([
-      @html.span("Built with ldiff for MoonBit · "),
+      @html.span("Built with ldiff · "),
       @html.a(
         href="https://github.com/moonbit-community/ldiff",
         target=Blank,

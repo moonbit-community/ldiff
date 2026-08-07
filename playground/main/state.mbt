@@ -30,6 +30,7 @@ priv enum SideLoad {
 ///|
 priv struct FileState {
   file : ApiFile
+  diff_mode : FileDiffMode
   expanded : Bool
   old_side : SideLoad
   new_side : SideLoad
@@ -103,7 +104,7 @@ priv enum Msg {
   CommitPageLoaded(Int, Int, Result[ApiCommit, Error])
   ToggleFile(Int, Int)
   RetryFile(Int, Int)
-  SourceLoaded(Int, Int, SourceSide, Result[String, Error])
+  SourceLoaded(Int, Int, SourceSide, Result[(String, Bytes), Error])
 }
 
 ///|
@@ -138,7 +139,7 @@ fn source_request(
   side : SourceSide,
   emit : @rabbita.Emit[Msg],
 ) -> @rabbita.Cmd {
-  @http.get(url).expect_text(result => {
+  @http.get(url).expect_bytes(result => {
     emit(SourceLoaded(generation, index, side, result))
   })
 }
@@ -180,15 +181,20 @@ fn finish_commit(
   generation : Int,
   emit : @rabbita.Emit[Msg],
 ) -> (CommitView, @rabbita.Cmd) {
-  let matching = filter_moonbit_files(all_files)
   let parent_sha = first_parent(first)
   let states : Array[FileState] = []
   let commands : Array[@rabbita.Cmd] = []
-  for index, file in matching {
-    let expanded = index < 20
+  let mut moonbit_file_count = 0
+  for index, file in all_files {
+    let diff_mode = file_diff_mode(file)
+    let expanded = diff_mode is MoonBitDiff && moonbit_file_count < 20
+    if diff_mode is MoonBitDiff {
+      moonbit_file_count += 1
+    }
     let pair = source_pair(reference, first.sha, parent_sha, file)
     states.push({
       file,
+      diff_mode,
       expanded,
       old_side: initial_side(pair.old_url, expanded),
       new_side: initial_side(pair.new_url, expanded),
@@ -293,11 +299,11 @@ fn app_subscriptions(_model : Model, emit : @rabbita.Emit[Msg]) -> @sub.Sub {
 }
 
 ///|
-fn side_from_result(result : Result[String, Error]) -> SideLoad {
+fn side_from_result(result : Result[(String, Bytes), Error]) -> SideLoad {
   match result {
     Err(error) => LoadFailed(error_message(error, false))
-    Ok(text) =>
-      match check_source(text) {
+    Ok((_, bytes)) =>
+      match check_source(bytes) {
         Renderable(lines) => Ready(lines)
         Rejected(reason) => CannotRender(reason)
       }
@@ -489,6 +495,7 @@ fn update(
       if file.expanded {
         let changed = {
           file: file.file,
+          diff_mode: file.diff_mode,
           expanded: false,
           old_side: file.old_side,
           new_side: file.new_side,
@@ -508,6 +515,7 @@ fn update(
           file.new_side is NotRequested
         let changed = {
           file: file.file,
+          diff_mode: file.diff_mode,
           expanded: true,
           old_side: if file.old_side is NotRequested {
             initial_side(pair.old_url, true)
@@ -569,7 +577,13 @@ fn update(
       } else {
         file.new_side
       }
-      let changed = { file: file.file, expanded: true, old_side, new_side }
+      let changed = {
+        file: file.file,
+        diff_mode: file.diff_mode,
+        expanded: true,
+        old_side,
+        new_side,
+      }
       (
         with_phase(model, Showing(set_file_state(view, index, changed))),
         @rabbita.batch(commands),
@@ -587,6 +601,7 @@ fn update(
         Old =>
           {
             file: file.file,
+            diff_mode: file.diff_mode,
             expanded: file.expanded,
             old_side: loaded,
             new_side: file.new_side,
@@ -594,6 +609,7 @@ fn update(
         New =>
           {
             file: file.file,
+            diff_mode: file.diff_mode,
             expanded: file.expanded,
             old_side: file.old_side,
             new_side: loaded,

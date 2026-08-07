@@ -10,10 +10,17 @@ https://github.com/{owner}/{repo}/pull/{number}/changes/{sha}
 ```
 
 Both forms compare the commit with its first parent (or an empty old side for
-a root commit). The browser fetches anonymous GitHub REST and raw-content
-endpoints, renders only MoonBit source/project files, and never accepts,
-stores, or sends a personal access token. Anonymous GitHub API rate limits
-therefore apply.
+a root commit). Every changed file receives a card in GitHub's order. Files
+whose old or new path ends in `.mbt` use ldiff's MoonBit-aware lexical diff;
+other valid UTF-8 text files use a plain line diff. The first 20 MoonBit diffs
+open automatically, while all other files load on demand.
+
+Each downloaded side is limited to 1 MiB and 20,000 lines. Invalid UTF-8,
+NUL-containing, binary, and over-limit content keeps its file card and shows
+an explanatory message instead of a rendered diff. The browser fetches
+anonymous GitHub REST and raw-content endpoints and never accepts, stores, or
+sends a personal access token. Anonymous GitHub API rate limits therefore
+apply.
 
 Submitting a GitHub URL updates the browser to a static-host-friendly share
 route:

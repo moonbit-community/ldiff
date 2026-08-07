@@ -104,23 +104,26 @@ test "reject unsupported or malformed URLs" {
 }
 
 ///|
-test "filter MoonBit files including either side of a rename" {
+test "select MoonBit diff only when either path ends with lowercase mbt" {
   for
-    path in [
-      "a.mbt", "a.mbti", "guide.mbt.md", "moon.mod", "x/moon.pkg", "moon.work", "old/moon.mod.json",
-      "moon.pkg.json", "moon.work.json",
+    file in [
+      fixture_file("main.mbt", "modified"),
+      fixture_file("new.txt", "renamed", previous_filename="old.mbt"),
+      fixture_file("new.mbt", "renamed", previous_filename="old.txt"),
     ] {
-    assert_true(is_moonbit_file(path), msg=path)
+    assert_true(file_diff_mode(file) is MoonBitDiff, msg=file.filename)
   }
-  for path in ["README.md", "moon.json", "moon.mod.toml", "a.mbt.txt"] {
-    assert_false(is_moonbit_file(path), msg=path)
+  for
+    file in [
+      fixture_file("README.md", "modified"),
+      fixture_file("types.mbti", "modified"),
+      fixture_file("guide.mbt.md", "modified"),
+      fixture_file("MAIN.MBT", "modified"),
+      fixture_file("moon.pkg", "modified"),
+      fixture_file("new.txt", "renamed", previous_filename="old.txt"),
+    ] {
+    assert_true(file_diff_mode(file) is LineDiff, msg=file.filename)
   }
-  let files = [
-    fixture_file("new.txt", "renamed", previous_filename="old.mbt"),
-    fixture_file("new.mbt", "renamed", previous_filename="old.txt"),
-    fixture_file("README.md", "modified"),
-  ]
-  assert_eq(filter_moonbit_files(files).length(), 2)
 }
 
 ///|
@@ -219,14 +222,29 @@ test "added deleted renamed merge and root commits choose the correct raw sides"
 }
 
 ///|
-test "source validation normalizes CRLF and preserves all blank lines" {
-  guard check_source("a\r\n\r\n") is Renderable(lines) else {
+test "source validation accepts Unicode and normalizes CRLF" {
+  guard check_source(@utf8.encode("a\r\n名😀\r\n")) is Renderable(lines) else {
     fail("expected source to render")
   }
-  assert_eq(lines, ["a", "", ""])
-  assert_true(check_source("a\u{0000}b") is Rejected(_))
-  assert_true(check_source("x".repeat(MAX_SOURCE_BYTES + 1)) is Rejected(_))
-  assert_true(check_source("\n".repeat(MAX_SOURCE_LINES)) is Rejected(_))
+  assert_eq(lines, ["a", "名😀", ""])
+}
+
+///|
+test "source validation rejects invalid UTF-8, NUL, byte and line limits" {
+  guard check_source([0xff]) is Rejected(invalid_utf8) else {
+    fail("expected invalid UTF-8 to be rejected")
+  }
+  assert_true(invalid_utf8.contains("not valid UTF-8"))
+  guard check_source(b"a\x00b") is Rejected(nul) else {
+    fail("expected NUL to be rejected")
+  }
+  assert_true(nul.contains("NUL byte"))
+  assert_true(
+    check_source(Bytes::make(MAX_SOURCE_BYTES + 1, b'x')) is Rejected(_),
+  )
+  assert_true(
+    check_source(@utf8.encode("\n".repeat(MAX_SOURCE_LINES))) is Rejected(_),
+  )
 }
 
 ///|
@@ -249,13 +267,27 @@ test "stale commit responses are discarded by generation" {
 }
 
 ///|
-test "only the first twenty matching files auto-load and stale source replies are ignored" {
+test "all files remain listed but only the first twenty MoonBit diffs auto-load" {
   let fixture = decode_commit(
     read_fixture("playground/main/fixtures/root_commit.json"),
   )
   let files : Array[ApiFile] = []
+  files.push(fixture_file("README.md", "added"))
   for index in 0..<21 {
-    files.push(fixture_file("src/file_\{index}.mbt", "added"))
+    if index == 5 {
+      files.push(
+        fixture_file(
+          "src/file_5.txt",
+          "renamed",
+          previous_filename="src/file_5.mbt",
+        ),
+      )
+    } else {
+      files.push(fixture_file("src/file_\{index}.mbt", "added"))
+    }
+    if index == 9 {
+      files.push(fixture_file("assets/logo.bin", "added"))
+    }
   }
   let emit : @rabbita.Emit[Msg] = Emit(_ => @rabbita.none)
   let reference = CommitRef::{
@@ -264,13 +296,32 @@ test "only the first twenty matching files auto-load and stale source replies ar
     sha: fixture.sha,
   }
   let (view, _) = finish_commit(reference, fixture, files, 7, emit)
-  for index in 0..<20 {
-    assert_true(view.files[index].expanded)
-    assert_true(view.files[index].old_side is Ready([]))
-    assert_true(view.files[index].new_side is Loading)
+  assert_eq(view.files.length(), files.length())
+  assert_eq(
+    view.files.map(state => state.file.filename),
+    files.map(file => file.filename),
+  )
+  let mut moonbit_index = 0
+  for state in view.files {
+    match state.diff_mode {
+      MoonBitDiff => {
+        if moonbit_index < 20 {
+          assert_true(state.expanded, msg=state.file.filename)
+          assert_true(state.old_side is Ready([]), msg=state.file.filename)
+          assert_true(state.new_side is Loading, msg=state.file.filename)
+        } else {
+          assert_false(state.expanded, msg=state.file.filename)
+          assert_true(state.new_side is NotRequested, msg=state.file.filename)
+        }
+        moonbit_index += 1
+      }
+      LineDiff => {
+        assert_false(state.expanded, msg=state.file.filename)
+        assert_true(state.new_side is NotRequested, msg=state.file.filename)
+      }
+    }
   }
-  assert_false(view.files[20].expanded)
-  assert_true(view.files[20].new_side is NotRequested)
+  assert_eq(moonbit_index, 21)
 
   let model = Model::{
     input: "",
@@ -281,6 +332,10 @@ test "only the first twenty matching files auto-load and stale source replies ar
     share_url: None,
     copy_status: CopyReady,
   }
-  let (after, _) = update(model, SourceLoaded(6, 0, New, Ok("stale")), emit)
+  let (after, _) = update(
+    model,
+    SourceLoaded(6, 0, New, Ok(("text/plain", @utf8.encode("stale")))),
+    emit,
+  )
   assert_true(after == model)
 }
