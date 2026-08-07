@@ -216,3 +216,13 @@ test "window acceptance rejects weak exact coverage and unsafe cell counts" {
   assert_true(traceback_cells_within_limit(TRACEBACK_CELL_LIMIT - 1, 0))
   assert_false(traceback_cells_within_limit(TRACEBACK_CELL_LIMIT, 0))
 }
+
+///|
+test "unpaired-line highlighting fixture reaches the rejected window path" {
+  let old = ["let total = price", "unrelated old"]
+  let new = ["let sum = price", "different new"]
+  guard alignment_tokens(old, new, line => line) is Some(tokens) else {
+    fail("expected line alignment to stay within its budgets")
+  }
+  assert_true(window_changes(tokens.olds, tokens.news) is None)
+}

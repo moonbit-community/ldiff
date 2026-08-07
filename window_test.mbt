@@ -69,23 +69,33 @@ test "reflowed substitution and trailing comma stay independently changed" {
 }
 
 ///|
-test "rejected multi-line window preserves legacy per-line highlighting" {
+test "rejected multi-line window strongly highlights unpaired lines" {
   let old = ["let total = price", "unrelated old"]
   let new = ["let sum = price", "different new"]
   let split = @ldiff.side_by_side_html(old~, new~, context=0)
   let unified = @ldiff.unified_html(old~, new~, context=0)
   let old_pair = "let <b class=\"wd\">total</b> = price"
   let new_pair = "let <b class=\"wa\">sum</b> = price"
-  assert_true(split.contains(old_pair))
-  assert_true(split.contains(new_pair))
-  assert_true(unified.contains(old_pair))
-  assert_true(unified.contains(new_pair))
+  let old_unpaired = "<b class=\"wd\">unrelated old</b>"
+  let new_unpaired = "<b class=\"wa\">different new</b>"
+  for html in [split, unified] {
+    assert_true(html.contains(old_pair))
+    assert_true(html.contains(new_pair))
+    assert_true(html.contains(old_unpaired))
+    assert_true(html.contains(new_unpaired))
+    assert_false(html.contains("<b class=\"wd\">let total = price</b>"))
+    assert_false(html.contains("<b class=\"wa\">let sum = price</b>"))
+  }
   assert_true(
     split.contains(
-      "<td class=\"del\">unrelated old</td><td class=\"empty\"></td>",
+      "<td class=\"del\">\{old_unpaired}</td><td class=\"empty\"></td>",
     ),
   )
-  assert_false(split.contains("<b class=\"wd\">unrelated"))
+  assert_true(
+    split.contains(
+      "<td class=\"empty\"></td><td class=\"add\">\{new_unpaired}</td>",
+    ),
+  )
 }
 
 ///|

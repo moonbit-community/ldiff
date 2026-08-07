@@ -177,3 +177,17 @@ test "pair renderer uses token text and trims each side independently" {
   ])
   assert_eq(comment, "<b class=\"wa\">// word</b> ")
 }
+
+///|
+test "full-line renderer trims whitespace escapes content and skips empty emphasis" {
+  assert_eq(
+    full_line_html(tokenize_line(" \t<old & gone>  "), "wd"),
+    " \t<b class=\"wd\">&lt;old &amp; gone&gt;</b>  ",
+  )
+  assert_eq(
+    full_line_html(tokenize_line("\tnew & <value> "), "wa"),
+    "\t<b class=\"wa\">new &amp; &lt;value&gt;</b> ",
+  )
+  assert_eq(full_line_html(tokenize_line(" \t  "), "wd"), " \t  ")
+  assert_eq(full_line_html(tokenize_line(""), "wa"), "")
+}

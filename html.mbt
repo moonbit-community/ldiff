@@ -83,6 +83,18 @@ fn flush_changed_run(
 }
 
 ///|
+/// Strongly highlight every non-whitespace token in one present line. The
+/// shared changed-run renderer keeps leading and trailing whitespace outside
+/// the `<b>` and escapes token text; blank and whitespace-only lines stay
+/// plain.
+fn full_line_html(tokens : ArrayView[Tok], class_name : String) -> String {
+  let buf = StringBuilder::new()
+  let run = tokens.to_owned()
+  flush_changed_run(buf, run, class_name)
+  buf.to_string()
+}
+
+///|
 /// Render one aligned pair's ops as (left row, right row) HTML. Adjacent
 /// changed tokens form one run. On each side independently, all-whitespace
 /// boundary tokens remain plain while the smallest semantic interval receives
@@ -169,7 +181,8 @@ priv struct ReplacementRow {
 /// Prepare replacement pairing and intraline markup once for both HTML
 /// views. A qualifying multi-line window projects the shared semantic
 /// traceback over every present line while `align` continues to determine row
-/// order. Rejected windows take the complete legacy path. The shared line
+/// order. Rejected windows keep legacy token diffs for paired rows and strongly
+/// highlight the non-whitespace content of unpaired rows. The shared line
 /// alignment budgets still return plain, unpaired rows, and an oversized
 /// legacy pair remains paired but carries no `<b>` highlight.
 fn prepare_replacement(
@@ -245,7 +258,7 @@ fn prepare_replacement(
                   window.old_changed[old_index],
                   "wd",
                 )
-              None => esc(old_lines[old_index].text)
+              None => full_line_html(tokens.olds[old_index], "wd")
             }
             rows.push({
               old_html: Some(old_html),
@@ -262,7 +275,7 @@ fn prepare_replacement(
                   window.new_changed[new_index],
                   "wa",
                 )
-              None => esc(new_lines[new_index].text)
+              None => full_line_html(tokens.news[new_index], "wa")
             }
             rows.push({
               old_html: None,

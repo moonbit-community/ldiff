@@ -323,7 +323,7 @@ test "numbered split has four columns and complete old and new positions" {
   )
   inspect(
     html.contains(
-      "<td class=\"line-number old-line-number\">2</td><td class=\"del\">old &lt;tag&gt;</td>",
+      "<td class=\"line-number old-line-number\">2</td><td class=\"del\"><b class=\"wd\">old &lt;tag&gt;</b></td>",
     ),
     content="true",
   )
@@ -335,11 +335,11 @@ test "numbered split has four columns and complete old and new positions" {
   )
   inspect(
     html.contains(
-      "<td class=\"line-number new-line-number\">3</td><td class=\"add\">inserted</td>",
+      "<td class=\"line-number new-line-number\">3</td><td class=\"add\"><b class=\"wa\">inserted</b></td>",
     ),
     content="true",
   )
-  inspect(html.contains("new &amp; value"), content="true")
+  inspect(html.contains("<b class=\"wa\">new &amp; value</b>"), content="true")
 }
 
 ///|
@@ -357,25 +357,25 @@ test "numbered unified has three columns across replacements and multiple hunks"
   inspect(html.contains("class=\"hunk-header\" colspan=\"3\""), content="true")
   inspect(
     html.contains(
-      "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-old</td>",
+      "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-<b class=\"wd\">old</b></td>",
     ),
     content="true",
   )
   inspect(
     html.contains(
-      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">2</td><td class=\"add\">+new</td>",
+      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">2</td><td class=\"add\">+<b class=\"wa\">new</b></td>",
     ),
     content="true",
   )
   inspect(
     html.contains(
-      "<td class=\"line-number old-line-number\">8</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-gone</td>",
+      "<td class=\"line-number old-line-number\">8</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-<b class=\"wd\">gone</b></td>",
     ),
     content="true",
   )
   inspect(
     html.contains(
-      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">8</td><td class=\"add\">+added</td>",
+      "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">8</td><td class=\"add\">+<b class=\"wa\">added</b></td>",
     ),
     content="true",
   )

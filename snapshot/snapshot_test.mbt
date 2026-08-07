@@ -62,3 +62,27 @@ test "left leaning insert" (t : @test.Test) {
   t.write(@ldiff.html_page(title="left leaning insert", body.to_string()))
   t.snapshot(filename="left_leaning_insert.html")
 }
+
+///|
+test "html fallback resource path" (t : @test.Test) {
+  let old = [
+      "    path =>", "      match self.vfs.read(path) {", "        Some(content) => {",
+      "          let content_type = match @path.Path::extname(path) {",
+    ][:]
+  let new = [
+      "    path => {", "      let resource = if self.vfs.read(path) is Some(content) {",
+      "        Some((path, content))", "      } else if request_accepts_html(request) &&",
+      "        self.html_fallback_path is Some(fallback) {", "        self.vfs.read(fallback).map(content => (fallback, content))",
+      "      } else {", "        None", "      }", "      match resource {", "        Some((resource_path, content)) => {",
+      "          let content_type = match @path.Path::extname(resource_path) {",
+    ][:]
+  let body = StringBuilder::new()
+  body <+ "<h3>Split view</h3>\n"
+  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "<h3>Unified view</h3>\n"
+  body <+ "\{@ldiff.unified_html(old~, new~)}"
+  t.write(
+    @ldiff.html_page(title="html fallback resource path", body.to_string()),
+  )
+  t.snapshot(filename="html_fallback_resource_path.html")
+}

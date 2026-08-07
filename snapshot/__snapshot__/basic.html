@@ -46,8 +46,8 @@ table.unified td:last-child { width: 100%; }
 <h3>Attributes, Unicode, HTML-specials</h3>
 <table class="split">
 <tr><td class="hunk-header" colspan="2">@@ -1,2 +1,2 @@</td></tr>
-<tr><td class="del">#deprecated("use `f` instead")</td><td class="empty"></td></tr>
-<tr><td class="empty"></td><td class="add">#deprecated("use `h` instead")</td></tr>
+<tr><td class="del"><b class="wd">#deprecated("use `f` instead")</b></td><td class="empty"></td></tr>
+<tr><td class="empty"></td><td class="add"><b class="wa">#deprecated("use `h` instead")</b></td></tr>
 <tr><td class="del">fn g(a : Int) -&gt; <b class="wd">Int</b> { a <b class="wd">&lt;</b> 3 &amp;&amp; a &gt; 0 } // 判断<b class="wd">范围</b></td><td class="add">fn g(a : Int) -&gt; <b class="wa">Bool</b> { a <b class="wa">&lt;=</b> 3 &amp;&amp; a &gt; 0 } // 判断<b class="wa">闭区间</b></td></tr>
 </table>
 </body></html>
