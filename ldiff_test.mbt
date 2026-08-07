@@ -96,6 +96,63 @@ test "split view: alignment, highlights, escaping" {
 }
 
 ///|
+test "whitespace-only edit runs avoid strong intraline highlights" {
+  let old_indent = "  let value = item"
+  let new_indent = "    let value = item"
+  let split = @ldiff.side_by_side_html(
+    old=[old_indent],
+    new=[new_indent],
+    context=0,
+  )
+  inspect(
+    split.contains(
+      "<td class=\"del\">\{old_indent}</td><td class=\"add\">\{new_indent}</td>",
+    ),
+    content="true",
+  )
+  inspect(split.contains("<b class="), content="false")
+  let unified = @ldiff.unified_html(
+    old=[old_indent],
+    new=[new_indent],
+    context=0,
+  )
+  inspect(
+    unified.contains("<span class=\"del\">-\{old_indent}</span>"),
+    content="true",
+  )
+  inspect(
+    unified.contains("<span class=\"add\">+\{new_indent}</span>"),
+    content="true",
+  )
+  inspect(unified.contains("<b class="), content="false")
+
+  let mixed = @ldiff.side_by_side_html(
+    old=["  let old = 1"],
+    new=["    let new = 1"],
+    context=0,
+  )
+  inspect(
+    mixed.contains(
+      "<td class=\"del\">  let <b class=\"wd\">old</b> = 1</td><td class=\"add\">    let <b class=\"wa\">new</b> = 1</td>",
+    ),
+    content="true",
+  )
+
+  for pair in [("f( x)", "f(x)"), ("f(x)", "f( x)")] {
+    let (old, new) = pair
+    let spacing = @ldiff.side_by_side_html(old=[old], new=[new], context=0)
+    inspect(spacing.contains("<b class="), content="false")
+  }
+
+  let phrase = @ldiff.side_by_side_html(
+    old=["pub fn f()"],
+    new=["pub fn f(a : Int)"],
+    context=0,
+  )
+  inspect(phrase.contains("<b class=\"wa\">a : Int</b>"), content="true")
+}
+
+///|
 test "budget fallbacks render plain rows" {
   // per-line token cap
   let big_old = "word ".repeat(600) + "same tail here"

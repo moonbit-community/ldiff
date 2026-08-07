@@ -30,21 +30,36 @@ fn esc(s : String) -> String {
 }
 
 ///|
-/// Render one aligned pair's ops as (left row, right row) HTML, merging
-/// adjacent highlighted tokens into single runs.
+/// Render one aligned pair's ops as (left row, right row) HTML. Adjacent
+/// changed tokens form one run, but a side whose run contains only whitespace
+/// remains plain instead of receiving strong intraline emphasis.
 fn pair_row_html(ops : Array[Op]) -> (String, String) {
   let l = StringBuilder::new()
   let r = StringBuilder::new()
   let lrun = StringBuilder::new()
   let rrun = StringBuilder::new()
+  let mut lmeaningful = false
+  let mut rmeaningful = false
   fn flushes() {
     if !lrun.is_empty() {
-      l <+ "<b class=\"wd\">\{lrun.to_string()}</b>"
+      let text = lrun.to_string()
+      if lmeaningful {
+        l <+ "<b class=\"wd\">\{text}</b>"
+      } else {
+        l <+ "\{text}"
+      }
       lrun.reset()
+      lmeaningful = false
     }
     if !rrun.is_empty() {
-      r <+ "<b class=\"wa\">\{rrun.to_string()}</b>"
+      let text = rrun.to_string()
+      if rmeaningful {
+        r <+ "<b class=\"wa\">\{text}</b>"
+      } else {
+        r <+ "\{text}"
+      }
       rrun.reset()
+      rmeaningful = false
     }
   }
 
@@ -58,9 +73,25 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
       OSub(a, b) => {
         lrun <+ "\{esc(a.text)}"
         rrun <+ "\{esc(b.text)}"
+        if a.kind != Space {
+          lmeaningful = true
+        }
+        if b.kind != Space {
+          rmeaningful = true
+        }
       }
-      ODel(a) => lrun <+ "\{esc(a.text)}"
-      OIns(b) => rrun <+ "\{esc(b.text)}"
+      ODel(a) => {
+        lrun <+ "\{esc(a.text)}"
+        if a.kind != Space {
+          lmeaningful = true
+        }
+      }
+      OIns(b) => {
+        rrun <+ "\{esc(b.text)}"
+        if b.kind != Space {
+          rmeaningful = true
+        }
+      }
     }
   }
   flushes()
