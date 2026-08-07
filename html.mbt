@@ -117,6 +117,45 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
 }
 
 ///|
+/// Render one source line from a window traceback projection. A gap never
+/// opens a strong-emphasis run, but horizontal `Space` tokens between two
+/// changed real atoms stay inside the same run. Boundary whitespace remains
+/// plain through `flush_changed_run`, matching the legacy renderer.
+fn projected_line_html(
+  tokens : ArrayView[Tok],
+  changed : ArrayView[Bool],
+  class_name : String,
+) -> String {
+  let buf = StringBuilder::new()
+  let run : Array[Tok] = []
+  fn flush() {
+    flush_changed_run(buf, run, class_name)
+  }
+
+  for index, token in tokens {
+    if changed[index] {
+      run.push(token)
+    } else if token.kind is Space && run.length() > 0 {
+      let mut next = index + 1
+      while next < tokens.length() && tokens[next].kind is Space {
+        next += 1
+      }
+      if next < tokens.length() && changed[next] {
+        run.push(token)
+      } else {
+        flush()
+        buf <+ "\{esc(token.text)}"
+      }
+    } else {
+      flush()
+      buf <+ "\{esc(token.text)}"
+    }
+  }
+  flush()
+  buf.to_string()
+}
+
+///|
 /// One renderer-neutral row in a prepared replacement block. `None` means an
 /// absent side; `Some("")` is a present blank line and must remain distinct.
 priv struct ReplacementRow {
@@ -128,9 +167,11 @@ priv struct ReplacementRow {
 
 ///|
 /// Prepare replacement pairing and intraline markup once for both HTML
-/// views. The shared alignment budgets return plain, unpaired rows. A chosen
-/// pair beyond 262144 traceback cells remains paired but carries no `<b>`
-/// highlight, preserving the existing deterministic safety fallback.
+/// views. A qualifying multi-line window projects the shared semantic
+/// traceback over every present line while `align` continues to determine row
+/// order. Rejected windows take the complete legacy path. The shared line
+/// alignment budgets still return plain, unpaired rows, and an oversized
+/// legacy pair remains paired but carries no `<b>` highlight.
 fn prepare_replacement(
   old_lines : ArrayView[DiffLine],
   new_lines : ArrayView[DiffLine],
@@ -155,18 +196,39 @@ fn prepare_replacement(
         })
       }
     }
-    Some(tokens) =>
+    Some(tokens) => {
+      let changes = window_changes(tokens.olds, tokens.news)
       for pair in align(tokens.olds, tokens.news) {
         match pair {
           (Some(old_index), Some(new_index)) => {
-            let (old_html, new_html) = if (tokens.olds[old_index].length() + 1) *
-              (tokens.news[new_index].length() + 1) >
-              262144 {
-              (esc(old_lines[old_index].text), esc(new_lines[new_index].text))
-            } else {
-              pair_row_html(
-                pair_ops(tokens.olds[old_index], tokens.news[new_index]),
-              )
+            let (old_html, new_html) = match changes {
+              Some(window) =>
+                (
+                  projected_line_html(
+                    tokens.olds[old_index],
+                    window.old_changed[old_index],
+                    "wd",
+                  ),
+                  projected_line_html(
+                    tokens.news[new_index],
+                    window.new_changed[new_index],
+                    "wa",
+                  ),
+                )
+              None =>
+                if !traceback_cells_within_limit(
+                    tokens.olds[old_index].length(),
+                    tokens.news[new_index].length(),
+                  ) {
+                  (
+                    esc(old_lines[old_index].text),
+                    esc(new_lines[new_index].text),
+                  )
+                } else {
+                  pair_row_html(
+                    pair_ops(tokens.olds[old_index], tokens.news[new_index]),
+                  )
+                }
             }
             rows.push({
               old_html: Some(old_html),
@@ -175,23 +237,44 @@ fn prepare_replacement(
               new_offset: Some(new_index),
             })
           }
-          (Some(old_index), None) =>
+          (Some(old_index), None) => {
+            let old_html = match changes {
+              Some(window) =>
+                projected_line_html(
+                  tokens.olds[old_index],
+                  window.old_changed[old_index],
+                  "wd",
+                )
+              None => esc(old_lines[old_index].text)
+            }
             rows.push({
-              old_html: Some(esc(old_lines[old_index].text)),
+              old_html: Some(old_html),
               new_html: None,
               old_offset: Some(old_index),
               new_offset: None,
             })
-          (None, Some(new_index)) =>
+          }
+          (None, Some(new_index)) => {
+            let new_html = match changes {
+              Some(window) =>
+                projected_line_html(
+                  tokens.news[new_index],
+                  window.new_changed[new_index],
+                  "wa",
+                )
+              None => esc(new_lines[new_index].text)
+            }
             rows.push({
               old_html: None,
-              new_html: Some(esc(new_lines[new_index].text)),
+              new_html: Some(new_html),
               old_offset: None,
               new_offset: Some(new_index),
             })
+          }
           (None, None) => ()
         }
       }
+    }
   }
   rows
 }
