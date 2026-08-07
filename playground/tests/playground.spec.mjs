@@ -58,16 +58,58 @@ async function loadMockedCommit(page) {
   });
 
   await page.goto("/");
-  await page.getByLabel("GitHub commit URL").fill(commitUrl);
-  await page.getByRole("button", { name: "Load diff" }).click();
+  await page.getByLabel("Public GitHub commit URL").fill(commitUrl);
+  await page.getByRole("button", { name: "View diff" }).click();
   await expect(page.locator("table.split")).toBeVisible();
 }
+
+async function openMockedShareLink(page) {
+  await page.route("https://**", route => route.abort("blockedbyclient"));
+  await page.route("https://api.github.com/**", async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(apiCommit),
+    });
+  });
+  await page.route("https://raw.githubusercontent.com/**", async route => {
+    const revision = new URL(route.request().url()).pathname.split("/")[3];
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain",
+      headers: { "access-control-allow-origin": "*" },
+      body: revision === parentSha ? oldSource : newSource,
+    });
+  });
+  await page.goto(`/#/example/project/commit/${commitSha}`);
+  await expect(page.locator("table.split")).toBeVisible();
+}
+
+test("landing follows the compact DiffsHub-style URL handoff", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "ldiff playground" })).toBeVisible();
+  await expect(page.getByText("− github", { exact: true })).toBeVisible();
+  await expect(page.getByText("+ playground", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Supported links" })).toBeVisible();
+
+  const landingMetrics = await page.locator(".shell.landing").evaluate(shell => ({
+    width: shell.getBoundingClientRect().width,
+    background: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(landingMetrics.width).toBeLessThanOrEqual(688);
+  expect(landingMetrics.background).toBe("rgb(247, 247, 247)");
+});
 
 test("desktop keeps split columns balanced and switches views", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await loadMockedCommit(page);
 
   await expect(page.getByText("example/project@", { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(`/#/example/project/commit/${commitSha}`);
+  await expect(page.getByLabel("Shareable playground URL")).toHaveValue(page.url());
 
   const heroLayout = await page.locator(".hero").evaluate(hero => {
     const copy = hero.querySelector(".hero-copy").getBoundingClientRect();
@@ -104,6 +146,21 @@ test("desktop keeps split columns balanced and switches views", async ({ page })
   await expect(page.locator("table.unified")).toBeVisible();
   await expect(page.locator("table.split")).toHaveCount(0);
   await page.getByRole("button", { name: "Use split view" }).click();
+  await expect(page.locator("table.split")).toBeVisible();
+});
+
+test("a shared playground URL restores the commit and can be copied", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openMockedShareLink(page);
+
+  await expect(page.getByLabel("Public GitHub commit URL")).toHaveValue(commitUrl);
+  await expect(page.getByLabel("Shareable playground URL")).toHaveValue(page.url());
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
+
+  await page.reload();
   await expect(page.locator("table.split")).toBeVisible();
 });
 

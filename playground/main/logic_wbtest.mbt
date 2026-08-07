@@ -50,6 +50,45 @@ test "parse supported GitHub commit URL forms" {
 }
 
 ///|
+test "shared playground routes round-trip to canonical GitHub commit URLs" {
+  let reference = CommitRef::{
+    owner: "moonbit-community",
+    repo: "ldiff",
+    sha: "aBcDeF1",
+  }
+  assert_eq(
+    playground_route(reference),
+    "#/moonbit-community/ldiff/commit/aBcDeF1",
+  )
+  assert_eq(
+    canonical_github_url(reference),
+    "https://github.com/moonbit-community/ldiff/commit/aBcDeF1",
+  )
+  guard reference_from_playground_url(
+      "https://example.github.io/ldiff/#/moonbit-community/ldiff/commit/aBcDeF1",
+    )
+    is Ok(Some(parsed)) else {
+    fail("expected the shared route to parse")
+  }
+  assert_true(parsed == reference)
+  assert_true(
+    reference_from_playground_url("https://example.com/ldiff/") is Ok(None),
+  )
+  assert_true(
+    reference_from_playground_url(
+      "https://example.com/ldiff/#/moonbit-community/ldiff/pull/1",
+    )
+    is Err(_),
+  )
+  assert_true(
+    reference_from_playground_url(
+      "https://example.com/ldiff/#/bad owner/ldiff/commit/abcdef1",
+    )
+    is Err(_),
+  )
+}
+
+///|
 test "reject unsupported or malformed URLs" {
   for
     url in [
@@ -132,7 +171,7 @@ test "pagination appends file metadata and stops at GitHub's 30-page cap" {
   assert_false(should_fetch_next_page(1, 99))
   assert_false(should_fetch_next_page(30, 100))
   assert_true(
-    commit_api_url(CommitRef::{ owner: "a", repo: "b", sha: "abcdef1" }, 30).has_suffix(
+    commit_api_url({ owner: "a", repo: "b", sha: "abcdef1" }, 30).has_suffix(
       "?per_page=100&page=30",
     ),
   )
@@ -197,11 +236,14 @@ test "stale commit responses are discarded by generation" {
     generation: 2,
     view_mode: Split,
     phase: Idle,
+    route: None,
+    share_url: None,
+    copy_status: CopyReady,
   }
   let fixture = decode_commit(
     read_fixture("playground/main/fixtures/root_commit.json"),
   )
-  let emit : @rabbita.Emit[Msg] = @cmd.Emit(_ => @rabbita.none)
+  let emit : @rabbita.Emit[Msg] = Emit(_ => @rabbita.none)
   let (after, _) = update(model, CommitPageLoaded(1, 1, Ok(fixture)), emit)
   assert_true(after == model)
 }
@@ -215,7 +257,7 @@ test "only the first twenty matching files auto-load and stale source replies ar
   for index in 0..<21 {
     files.push(fixture_file("src/file_\{index}.mbt", "added"))
   }
-  let emit : @rabbita.Emit[Msg] = @cmd.Emit(_ => @rabbita.none)
+  let emit : @rabbita.Emit[Msg] = Emit(_ => @rabbita.none)
   let reference = CommitRef::{
     owner: "example",
     repo: "root",
@@ -235,6 +277,9 @@ test "only the first twenty matching files auto-load and stale source replies ar
     generation: 7,
     view_mode: Split,
     phase: Showing(view),
+    route: Some(reference),
+    share_url: None,
+    copy_status: CopyReady,
   }
   let (after, _) = update(model, SourceLoaded(6, 0, New, Ok("stale")), emit)
   assert_true(after == model)

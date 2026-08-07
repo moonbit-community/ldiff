@@ -61,23 +61,45 @@ priv enum Phase {
 } derive(Eq)
 
 ///|
+priv enum CopyStatus {
+  CopyReady
+  Copied
+  CopyError(String)
+} derive(Eq)
+
+///|
 priv struct Model {
   input : String
   generation : Int
   view_mode : ViewMode
   phase : Phase
+  route : CommitRef?
+  share_url : String?
+  copy_status : CopyStatus
 } derive(Eq)
 
 ///|
 fn initial_model() -> Model {
-  { input: "", generation: 0, view_mode: Split, phase: Idle }
+  {
+    input: "",
+    generation: 0,
+    view_mode: Split,
+    phase: Idle,
+    route: None,
+    share_url: None,
+    copy_status: CopyReady,
+  }
 }
 
 ///|
 priv enum Msg {
   InputChanged(String)
   Submit
+  RouteChanged(@url.Url)
   ToggleView
+  CopyShareLink
+  ShareCopied
+  ShareCopyFailed(String)
   CommitPageLoaded(Int, Int, Result[ApiCommit, Error])
   ToggleFile(Int, Int)
   RetryFile(Int, Int)
@@ -228,7 +250,46 @@ fn with_phase(model : Model, phase : Phase) -> Model {
     generation: model.generation,
     view_mode: model.view_mode,
     phase,
+    route: model.route,
+    share_url: model.share_url,
+    copy_status: model.copy_status,
   }
+}
+
+///|
+fn begin_commit_load(
+  model : Model,
+  reference : CommitRef,
+  emit : @rabbita.Emit[Msg],
+) -> (Model, @rabbita.Cmd) {
+  let generation = model.generation + 1
+  (
+    {
+      input: canonical_github_url(reference),
+      generation,
+      view_mode: model.view_mode,
+      phase: LoadingCommit(reference~, page=1, first=None, files=[]),
+      route: Some(reference),
+      share_url: Some(playground_share_url(reference)),
+      copy_status: CopyReady,
+    },
+    commit_request(reference, generation, 1, emit),
+  )
+}
+
+///|
+fn app_init(emit : @rabbita.Emit[Msg]) -> (Model, @rabbita.Cmd) {
+  let model = initial_model()
+  match reference_from_playground_url(browser_current_url()) {
+    Ok(Some(reference)) => begin_commit_load(model, reference, emit)
+    Ok(None) => (model, @rabbita.none)
+    Err(message) => (with_phase(model, LoadFailed(message)), @rabbita.none)
+  }
+}
+
+///|
+fn app_subscriptions(_model : Model, emit : @rabbita.Emit[Msg]) -> @sub.Sub {
+  @sub.on_url_changed(url => emit(RouteChanged(url)))
 }
 
 ///|
@@ -257,6 +318,9 @@ fn update(
           generation: model.generation,
           view_mode: model.view_mode,
           phase: model.phase,
+          route: model.route,
+          share_url: model.share_url,
+          copy_status: CopyReady,
         },
         @rabbita.none,
       )
@@ -271,34 +335,110 @@ fn update(
             Split
           },
           phase: model.phase,
+          route: model.route,
+          share_url: model.share_url,
+          copy_status: model.copy_status,
         },
         @rabbita.none,
       )
-    Submit => {
-      let generation = model.generation + 1
+    Submit =>
       match parse_commit_url(model.input) {
         Err(message) =>
           (
             {
               input: model.input,
-              generation,
+              generation: model.generation + 1,
               view_mode: model.view_mode,
               phase: LoadFailed(message),
+              route: model.route,
+              share_url: model.share_url,
+              copy_status: CopyReady,
             },
             @rabbita.none,
           )
-        Ok(reference) =>
+        Ok(reference) => {
+          let already_at_route = model.route == Some(reference)
+          let (next, request) = begin_commit_load(model, reference, emit)
+          let navigation = if already_at_route {
+            @rabbita.none
+          } else {
+            @nav.push_url(playground_share_url(reference))
+          }
+          (next, @rabbita.batch([navigation, request]))
+        }
+      }
+    RouteChanged(url) =>
+      match reference_from_route(url.fragment) {
+        Err(message) =>
           (
             {
-              input: model.input,
-              generation,
+              input: "",
+              generation: model.generation + 1,
               view_mode: model.view_mode,
-              phase: LoadingCommit(reference~, page=1, first=None, files=[]),
+              phase: LoadFailed(message),
+              route: None,
+              share_url: None,
+              copy_status: CopyReady,
             },
-            commit_request(reference, generation, 1, emit),
+            @rabbita.none,
+          )
+        Ok(None) =>
+          (
+            {
+              input: "",
+              generation: model.generation + 1,
+              view_mode: model.view_mode,
+              phase: Idle,
+              route: None,
+              share_url: None,
+              copy_status: CopyReady,
+            },
+            @rabbita.none,
+          )
+        Ok(Some(reference)) =>
+          if model.route == Some(reference) {
+            (model, @rabbita.none)
+          } else {
+            begin_commit_load(model, reference, emit)
+          }
+      }
+    CopyShareLink =>
+      match model.share_url {
+        None => (model, @rabbita.none)
+        Some(url) =>
+          (
+            model,
+            @clipboard.copy(Text(url), copied=emit(ShareCopied), failed=message => {
+              emit(ShareCopyFailed(message))
+            }),
           )
       }
-    }
+    ShareCopied =>
+      (
+        {
+          input: model.input,
+          generation: model.generation,
+          view_mode: model.view_mode,
+          phase: model.phase,
+          route: model.route,
+          share_url: model.share_url,
+          copy_status: Copied,
+        },
+        @rabbita.none,
+      )
+    ShareCopyFailed(message) =>
+      (
+        {
+          input: model.input,
+          generation: model.generation,
+          view_mode: model.view_mode,
+          phase: model.phase,
+          route: model.route,
+          share_url: model.share_url,
+          copy_status: CopyError(message),
+        },
+        @rabbita.none,
+      )
     CommitPageLoaded(generation, page, result) => {
       if generation != model.generation {
         return (model, @rabbita.none)
