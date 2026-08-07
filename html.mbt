@@ -30,37 +30,71 @@ fn esc(s : String) -> String {
 }
 
 ///|
+fn token_text_is_whitespace(token : Tok) -> Bool {
+  if token.text is "" {
+    return false
+  }
+  for c in token.text {
+    if !c.is_whitespace() {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn write_escaped_tokens(
+  buf : StringBuilder,
+  run : Array[Tok],
+  start : Int,
+  end : Int,
+) -> Unit {
+  for i in start..<end {
+    buf <+ "\{esc(run[i].text)}"
+  }
+}
+
+///|
+fn flush_changed_run(
+  buf : StringBuilder,
+  run : Array[Tok],
+  class_name : String,
+) -> Unit {
+  let mut semantic_start = 0
+  while semantic_start < run.length() &&
+        token_text_is_whitespace(run[semantic_start]) {
+    semantic_start += 1
+  }
+  if semantic_start == run.length() {
+    write_escaped_tokens(buf, run, 0, run.length())
+  } else {
+    let mut semantic_end = run.length()
+    while semantic_end > semantic_start &&
+          token_text_is_whitespace(run[semantic_end - 1]) {
+      semantic_end -= 1
+    }
+    write_escaped_tokens(buf, run, 0, semantic_start)
+    buf <+ "<b class=\"\{class_name}\">"
+    write_escaped_tokens(buf, run, semantic_start, semantic_end)
+    buf <+ "</b>"
+    write_escaped_tokens(buf, run, semantic_end, run.length())
+  }
+  run.clear()
+}
+
+///|
 /// Render one aligned pair's ops as (left row, right row) HTML. Adjacent
-/// changed tokens form one run, but a side whose run contains only whitespace
-/// remains plain instead of receiving strong intraline emphasis.
+/// changed tokens form one run. On each side independently, all-whitespace
+/// boundary tokens remain plain while the smallest semantic interval receives
+/// strong intraline emphasis; internal whitespace stays inside that interval.
 fn pair_row_html(ops : Array[Op]) -> (String, String) {
   let l = StringBuilder::new()
   let r = StringBuilder::new()
-  let lrun = StringBuilder::new()
-  let rrun = StringBuilder::new()
-  let mut lmeaningful = false
-  let mut rmeaningful = false
+  let lrun : Array[Tok] = []
+  let rrun : Array[Tok] = []
   fn flushes() {
-    if !lrun.is_empty() {
-      let text = lrun.to_string()
-      if lmeaningful {
-        l <+ "<b class=\"wd\">\{text}</b>"
-      } else {
-        l <+ "\{text}"
-      }
-      lrun.reset()
-      lmeaningful = false
-    }
-    if !rrun.is_empty() {
-      let text = rrun.to_string()
-      if rmeaningful {
-        r <+ "<b class=\"wa\">\{text}</b>"
-      } else {
-        r <+ "\{text}"
-      }
-      rrun.reset()
-      rmeaningful = false
-    }
+    flush_changed_run(l, lrun, "wd")
+    flush_changed_run(r, rrun, "wa")
   }
 
   for op in ops {
@@ -71,27 +105,11 @@ fn pair_row_html(ops : Array[Op]) -> (String, String) {
         r <+ "\{esc(t.text)}"
       }
       OSub(a, b) => {
-        lrun <+ "\{esc(a.text)}"
-        rrun <+ "\{esc(b.text)}"
-        if a.kind != Space {
-          lmeaningful = true
-        }
-        if b.kind != Space {
-          rmeaningful = true
-        }
+        lrun.push(a)
+        rrun.push(b)
       }
-      ODel(a) => {
-        lrun <+ "\{esc(a.text)}"
-        if a.kind != Space {
-          lmeaningful = true
-        }
-      }
-      OIns(b) => {
-        rrun <+ "\{esc(b.text)}"
-        if b.kind != Space {
-          rmeaningful = true
-        }
-      }
+      ODel(a) => lrun.push(a)
+      OIns(b) => rrun.push(b)
     }
   }
   flushes()
