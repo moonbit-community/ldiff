@@ -125,3 +125,55 @@ test "fallback tokens still feed the existing alignment budgets" {
   inspect(new_tokens.length() > 1024, content="true")
   inspect(alignment_tokens([old], [new], line => line) is None, content="true")
 }
+
+///|
+test "pair renderer trims whitespace tokens at every changed-run boundary" {
+  let space = Tok::{ kind: Space, text: " " }
+  let old = Tok::{ kind: Word, text: "old" }
+  let new = Tok::{ kind: Word, text: "new" }
+  let (both_left, both_right) = pair_row_html([
+    OSub(space, space),
+    OSub(old, new),
+    OSub(space, space),
+  ])
+  assert_eq(both_left, " <b class=\"wd\">old</b> ")
+  assert_eq(both_right, " <b class=\"wa\">new</b> ")
+
+  let (before, _) = pair_row_html([ODel(space), ODel(old)])
+  assert_eq(before, " <b class=\"wd\">old</b>")
+  let (after, _) = pair_row_html([ODel(old), ODel(space)])
+  assert_eq(after, "<b class=\"wd\">old</b> ")
+}
+
+///|
+test "pair renderer uses token text and trims each side independently" {
+  let (left, right) = pair_row_html([
+    OSub({ kind: Filler, text: "\t" }, { kind: Word, text: "new" }),
+    OSub({ kind: Word, text: "old" }, { kind: Filler, text: " " }),
+  ])
+  assert_eq(left, "\t<b class=\"wd\">old</b>")
+  assert_eq(right, "<b class=\"wa\">new</b> ")
+
+  let (_, internal) = pair_row_html([
+    OIns({ kind: Word, text: "a" }),
+    OIns({ kind: Space, text: " " }),
+    OIns({ kind: Punct, text: ":" }),
+    OIns({ kind: Filler, text: " " }),
+    OIns({ kind: Word, text: "Int" }),
+  ])
+  assert_eq(internal, "<b class=\"wa\">a : Int</b>")
+
+  let (plain, _) = pair_row_html([
+    ODel({ kind: Space, text: " " }),
+    ODel({ kind: Filler, text: "\t" }),
+  ])
+  assert_eq(plain, " \t")
+
+  let (_, comment) = pair_row_html([
+    OIns({ kind: Filler, text: "//" }),
+    OIns({ kind: Filler, text: " " }),
+    OIns({ kind: Comment, text: "word" }),
+    OIns({ kind: Filler, text: " " }),
+  ])
+  assert_eq(comment, "<b class=\"wa\">// word</b> ")
+}

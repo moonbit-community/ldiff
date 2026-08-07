@@ -153,6 +153,55 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
 }
 
 ///|
+test "semantic highlights exclude boundary whitespace in both HTML views" {
+  let count_split = @ldiff.side_by_side_html(
+    old=["count"],
+    new=["count + tax"],
+    context=0,
+  )
+  inspect(
+    count_split.contains(
+      "<td class=\"del\">count</td><td class=\"add\">count <b class=\"wa\">+ tax</b></td>",
+    ),
+    content="true",
+  )
+  let count_unified = @ldiff.unified_html(
+    old=["count"],
+    new=["count + tax"],
+    context=0,
+  )
+  inspect(
+    count_unified.contains(
+      "<span class=\"add\">+count <b class=\"wa\">+ tax</b></span>",
+    ),
+    content="true",
+  )
+
+  let parameter_split = @ldiff.side_by_side_html(
+    old=["f()"],
+    new=["f( a : Int )"],
+    context=0,
+  )
+  inspect(
+    parameter_split.contains(
+      "<td class=\"del\">f()</td><td class=\"add\">f( <b class=\"wa\">a : Int</b> )</td>",
+    ),
+    content="true",
+  )
+  let parameter_unified = @ldiff.unified_html(
+    old=["f()"],
+    new=["f( a : Int )"],
+    context=0,
+  )
+  inspect(
+    parameter_unified.contains(
+      "<span class=\"add\">+f( <b class=\"wa\">a : Int</b> )</span>",
+    ),
+    content="true",
+  )
+}
+
+///|
 test "budget fallbacks render plain rows" {
   // per-line token cap
   let big_old = "word ".repeat(600) + "same tail here"
