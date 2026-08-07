@@ -80,10 +80,11 @@ test "split view: alignment, highlights, escaping" {
   let html = @ldiff.side_by_side_html(old~, new~, context=1)
   // paired rows carry word-level highlights
   inspect(html.contains("<b class=\"wa\">"), content="true")
-  // the unrelated comment line is an unpaired deletion (no pairing garbage)
+  // the unrelated comment line remains an unpaired deletion; the accepted
+  // window projection may now emphasize its deleted semantic content
   inspect(
     html.contains(
-      "<td class=\"del\">  // helper detail</td><td class=\"empty\">",
+      "<td class=\"del\">  <b class=\"wd\">// helper detail</b></td><td class=\"empty\">",
     ),
     content="true",
   )
