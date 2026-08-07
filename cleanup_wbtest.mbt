@@ -61,12 +61,49 @@ fn ops_cost(ops : ArrayView[Op]) -> Int {
 }
 
 ///|
-test "lossless cleanup places repeated edits at natural right boundary" {
+fn changed_spans(ops : ArrayView[Op]) -> Array[(String, String)] {
+  let spans : Array[(String, String)] = []
+  let old_text : Array[String] = []
+  let new_text : Array[String] = []
+  let mut changed = false
+  fn flush() {
+    if changed {
+      spans.push((old_text.join(""), new_text.join("")))
+      old_text.clear()
+      new_text.clear()
+      changed = false
+    }
+  }
+
+  for op in ops {
+    match op {
+      OEq(_) => flush()
+      OSub(a, b) => {
+        changed = true
+        old_text.push(a.text)
+        new_text.push(b.text)
+      }
+      ODel(t) => {
+        changed = true
+        old_text.push(t.text)
+      }
+      OIns(t) => {
+        changed = true
+        new_text.push(t.text)
+      }
+    }
+  }
+  flush()
+  spans
+}
+
+///|
+test "global traceback places repeated edits at natural right boundary" {
   let repeated_old = tokenize_line("x x")
   let repeated_new = tokenize_line("x")
   inspect(
     cleanup_op_signature(pair_ops_min(repeated_old, repeated_new)),
-    content="-x|- |=x",
+    content="=x|- |-x",
   )
   inspect(
     cleanup_op_signature(pair_ops(repeated_old, repeated_new)),
@@ -76,7 +113,7 @@ test "lossless cleanup places repeated edits at natural right boundary" {
     cleanup_op_signature(
       pair_ops(tokenize_line("// foo foo"), tokenize_line("// foo")),
     ),
-    content="=//|= |-foo|- |=foo",
+    content="=//|= |=foo|- |-foo",
   )
   inspect(
     cleanup_op_signature(
@@ -84,6 +121,32 @@ test "lossless cleanup places repeated edits at natural right boundary" {
     ),
     content="=f|=(|-(|=x|=)|-)",
   )
+}
+
+///|
+test "global traceback keeps call parentheses and isolates the insertion" {
+  let old = "    match candidate.normalized_expr_identifier_name() {"
+  let new = "    if candidate.normalized_expr_identifier_name() is Some(candidate_name) {"
+  let old_toks = tokenize_line(old)
+  let new_toks = tokenize_line(new)
+  let ops = pair_ops(old_toks, new_toks)
+  assert_eq(reconstruct_ops(ops), (old, new))
+  assert_eq(ops_cost(ops), wdist(old_toks, new_toks))
+  assert_eq(changed_spans(ops), [
+    ("match", "if"),
+    ("", " is Some(candidate_name)"),
+  ])
+  let equal_call_parentheses : Array[String] = []
+  let mut before_insertion = true
+  for op in ops {
+    match op {
+      OIns(_) => before_insertion = false
+      OEq(t) if before_insertion && (t.text == "(" || t.text == ")") =>
+        equal_call_parentheses.push(t.text)
+      _ => ()
+    }
+  }
+  assert_eq(equal_call_parentheses, ["(", ")"])
 }
 
 ///|
@@ -102,15 +165,24 @@ test "token boundary score follows the language-aware priority table" {
 }
 
 ///|
-test "lossless cleanup preserves both texts and weighted minimum cost" {
+test "global traceback preserves both texts and weighted minimum cost" {
   for
     pair in [
       ("x x", "x"),
+      ("x", "x x"),
       ("x  x", "x"),
       ("a a a", "a a"),
+      ("alpha beta alpha beta", "alpha beta"),
       ("// foo foo", "// foo"),
+      ("// // foo foo", "// foo"),
       ("f((x))", "f(x)"),
+      ("f(x)", "f((x))"),
+      ("call((alpha), (alpha))", "call((alpha))"),
+      ("a \t a", "a"),
       ("let 名 = \"é😀\" // 注释 注释", "let 名 = \"z\" // 注释"),
+      (
+        "    match candidate.normalized_expr_identifier_name() {", "    if candidate.normalized_expr_identifier_name() is Some(candidate_name) {",
+      ),
       ("", "only new"),
     ] {
     let (old, new) = pair

@@ -33,9 +33,35 @@ test "token cleanup highlights the natural repeated-token boundary" {
     content="true",
   )
   let comment = @ldiff.unified_html(old=["// foo foo"], new=["// foo"])
-  inspect(comment.contains("// <b class=\"wd\">foo</b> foo"), content="true")
+  inspect(comment.contains("// foo <b class=\"wd\">foo</b>"), content="true")
   let unicode = @ldiff.side_by_side_html(old=["名 名"], new=["名"])
   inspect(unicode.contains("名 <b class=\"wd\">名</b>"), content="true")
+}
+
+///|
+test "global traceback fixes left-leaning insertion in both renderers" {
+  let old = ["    match candidate.normalized_expr_identifier_name() {"]
+  let new = [
+    "    if candidate.normalized_expr_identifier_name() is Some(candidate_name) {",
+  ]
+  let expected = "    <b class=\"wa\">if</b> candidate.normalized_expr_identifier_name() <b class=\"wa\">is Some(candidate_name)</b> {"
+  let split = @ldiff.side_by_side_html(
+    old~,
+    new~,
+    context=0,
+    line_cleanup=false,
+  )
+  let unified = @ldiff.unified_html(old~, new~, context=0, line_cleanup=false)
+  assert_true(split.contains(expected))
+  assert_true(unified.contains(expected))
+  assert_eq(
+    split,
+    @ldiff.side_by_side_html(old~, new~, context=0, line_cleanup=true),
+  )
+  assert_eq(
+    unified,
+    @ldiff.unified_html(old~, new~, context=0, line_cleanup=true),
+  )
 }
 
 ///|
