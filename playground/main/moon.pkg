@@ -1,8 +1,11 @@
 import {
   "moonbit-community/ldiff",
   "moonbit-community/rabbita",
+  "moonbit-community/rabbita/clipboard",
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/http",
+  "moonbit-community/rabbita/nav",
+  "moonbit-community/rabbita/sub",
   "moonbit-community/rabbita/url",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/json",

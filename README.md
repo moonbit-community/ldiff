@@ -15,6 +15,18 @@ endpoints, renders only MoonBit source/project files, and never accepts,
 stores, or sends a personal access token. Anonymous GitHub API rate limits
 therefore apply.
 
+Submitting a GitHub URL updates the browser to a static-host-friendly share
+route:
+
+```text
+https://{playground-host}/{base}/#/owner/repo/commit/sha
+```
+
+Opening that URL restores and loads the same commit automatically. The result
+page also exposes the full URL in a read-only field with a one-click copy
+button. Hash routing keeps shared links working on GitHub Pages without a
+server-side rewrite rule.
+
 Run the live development server from the Warren app directory:
 
 ```sh
