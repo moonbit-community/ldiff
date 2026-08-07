@@ -41,3 +41,24 @@ test "basic" (t : @test.Test) {
   t.write(@ldiff.html_page(title="ldiff basic", body.to_string()))
   t.snapshot(filename="basic.html")
 }
+
+///|
+test "left leaning insert" (t : @test.Test) {
+  let old = [
+      "    match candidate.normalized_expr_identifier_name() {", "      Some(candidate_name) =>",
+      "        Some(", "          bind_value(bindings, name, string_binding(candidate_name, candidate)),",
+      "        )", "      None => Some(false)", "    }",
+    ][:]
+  let new = [
+      "    if candidate.normalized_expr_identifier_name() is Some(candidate_name) {",
+      "      Some(", "        bind_value(bindings, name, string_binding(candidate_name, candidate)),",
+      "      )", "    } else {", "      Some(false)", "   }",
+    ][:]
+  let body = StringBuilder::new()
+  body <+ "<h3>Split view</h3>\n"
+  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "<h3>Unified view</h3>\n"
+  body <+ "\{@ldiff.unified_html(old~, new~)}"
+  t.write(@ldiff.html_page(title="left leaning insert", body.to_string()))
+  t.snapshot(filename="left_leaning_insert.html")
+}
