@@ -46,8 +46,9 @@ pub fn Tok::text(self : Tok) -> String {
 }
 
 ///|
-/// The alignment weight of a token class (integer; all scoring is integer so
-/// results are bit-identical on every backend).
+/// The baseline alignment weight of a token class (integer; all scoring is
+/// integer so results are bit-identical on every backend). Token-level
+/// refinements such as comma downweighting are applied by the internal scorer.
 pub fn weight(k : TokKind) -> Int {
   match k {
     Word | Str | Marker => 20
@@ -55,6 +56,19 @@ pub fn weight(k : TokKind) -> Int {
     Comment => 2
     Space => 1
     Filler => 0
+  }
+}
+
+///|
+/// Token-level weight used by semantic alignment. A comma is mostly a list
+/// separator and is frequently introduced mechanically when formatting a
+/// construct across multiple lines, so it carries only the smallest non-zero
+/// amount of evidence. Other punctuation keeps the structural `Punct` weight.
+fn alignment_weight(token : Tok) -> Int {
+  if token.kind is Punct && token.text == "," {
+    1
+  } else {
+    weight(token.kind)
   }
 }
 

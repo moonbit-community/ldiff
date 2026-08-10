@@ -129,6 +129,23 @@ test "pure one-to-many reflow projects every real token as unchanged" {
 }
 
 ///|
+test "formatted multiline call isolates the new trailing comma" {
+  let olds = ["call(alpha, beta, gamma)"].map(tokenize_line)
+  let news = ["call(", "  alpha,", "  beta,", "  gamma,", ")"].map(
+    tokenize_line,
+  )
+  guard window_changes(olds, news) is Some(changes) else {
+    fail("expected the formatted cross-line traceback to be accepted")
+  }
+  assert_false(changes.old_changed.any(row => row.contains(true)))
+  let changed_text : Array[String] = []
+  for index, tokens in news {
+    changed_text.push(window_changed_text(tokens, changes.new_changed[index]))
+  }
+  assert_eq(changed_text, ["", "", "", ",", ""])
+}
+
+///|
 test "expanded reflow changes only inserted semantic tokens and commas" {
   let olds = ["compute(alpha, beta)"].map(tokenize_line)
   let news = ["compute(", "  alpha,", "  beta,", "  gamma < limit,", ")"].map(

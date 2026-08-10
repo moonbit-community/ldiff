@@ -39,6 +39,17 @@ test "unrelated block orders delete before insert" {
 }
 
 ///|
+test "comma carries less alignment evidence than structural punctuation" {
+  let comma = Tok::{ kind: Punct, text: "," }
+  let close = Tok::{ kind: Punct, text: ")" }
+  assert_eq(weight(Punct), 6)
+  assert_eq(alignment_weight(comma), 1)
+  assert_eq(alignment_weight(close), 6)
+  assert_true(similarity("old,", "new,") < THETA)
+  assert_true(similarity("old)", "new)") > THETA)
+}
+
+///|
 test "pair_ops reconstruction property" {
   for
     pair in [

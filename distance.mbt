@@ -18,16 +18,16 @@
 // review; see README.
 
 ///|
-/// Same-kind substitution at 1.5x the class weight: cheaper than
-/// delete+insert (2x) so renames align, but expensive enough that two lines
-/// with nothing in common score ~250 permille, under the pairing threshold.
+/// Same-kind substitution at 1.5x the mean token weight: cheaper than
+/// delete+insert so renames align, but expensive enough that two lines with
+/// nothing in common score ~250 permille, under the pairing threshold.
 /// Cross-kind substitution is not offered; it decomposes into delete+insert.
 fn subst_cost(a : Tok, b : Tok) -> Int? {
   if a.kind == b.kind {
     if a.text == b.text {
       Some(0)
     } else {
-      Some(weight(a.kind) * 3 / 2)
+      Some((alignment_weight(a) + alignment_weight(b)) * 3 / 4)
     }
   } else {
     None
@@ -38,7 +38,7 @@ fn subst_cost(a : Tok, b : Tok) -> Int? {
 fn tok_mass(ts : ArrayView[Tok]) -> Int {
   let mut m = 0
   for t in ts {
-    m += weight(t.kind)
+    m += alignment_weight(t)
   }
   m
 }
@@ -50,15 +50,15 @@ fn wdist(a : ArrayView[Tok], b : ArrayView[Tok]) -> Int {
   let mut prev = Array::make(n + 1, 0)
   let mut acc = 0
   for j in 1..<(n + 1) {
-    acc += weight(b[j - 1].kind)
+    acc += alignment_weight(b[j - 1])
     prev[j] = acc
   }
   let mut cur = Array::make(n + 1, 0)
   for i in 1..<(a.length() + 1) {
-    cur[0] = prev[0] + weight(a[i - 1].kind)
+    cur[0] = prev[0] + alignment_weight(a[i - 1])
     for j in 1..<(n + 1) {
-      let del = prev[j] + weight(a[i - 1].kind)
-      let ins = cur[j - 1] + weight(b[j - 1].kind)
+      let del = prev[j] + alignment_weight(a[i - 1])
+      let ins = cur[j - 1] + alignment_weight(b[j - 1])
       let mut best = if del < ins { del } else { ins }
       match subst_cost(a[i - 1], b[j - 1]) {
         Some(c) => if prev[j - 1] + c < best { best = prev[j - 1] + c }
@@ -592,7 +592,7 @@ fn pair_high_exact_evidence(token : Tok, mode : PairMode) -> Int {
     Legacy => 0
     Window =>
       if token.kind is (Word | Str | Marker) {
-        weight(token.kind)
+        alignment_weight(token)
       } else {
         0
       }
@@ -618,7 +618,7 @@ fn pair_equal_score(
   if pair_has_new(state) {
     boundary += pair_close_boundary(b, b_trailing_gap, new_index, mode)
   }
-  let evidence = weight(a[old_index].token.kind)
+  let evidence = alignment_weight(a[old_index].token)
   {
     cost: score.cost,
     high_exact: score.high_exact +
@@ -737,7 +737,7 @@ fn pair_trace(a : WindowStream, b : WindowStream, mode : PairMode) -> PairTrace 
         mode,
         -1,
         j - 1,
-        weight(b.atoms[j - 1].token.kind),
+        alignment_weight(b.atoms[j - 1].token),
       )
       let next_state = pair_changed_state(state, false, true)
       pair_consider(
@@ -768,7 +768,7 @@ fn pair_trace(a : WindowStream, b : WindowStream, mode : PairMode) -> PairTrace 
         mode,
         i - 1,
         -1,
-        weight(a.atoms[i - 1].token.kind),
+        alignment_weight(a.atoms[i - 1].token),
       )
       let next_state = pair_changed_state(state, true, false)
       pair_consider(
@@ -795,7 +795,7 @@ fn pair_trace(a : WindowStream, b : WindowStream, mode : PairMode) -> PairTrace 
             mode,
             i - 1,
             -1,
-            weight(a.atoms[i - 1].token.kind),
+            alignment_weight(a.atoms[i - 1].token),
           )
           let next_state = pair_changed_state(state, true, false)
           pair_consider(
@@ -820,7 +820,7 @@ fn pair_trace(a : WindowStream, b : WindowStream, mode : PairMode) -> PairTrace 
             mode,
             -1,
             j - 1,
-            weight(b.atoms[j - 1].token.kind),
+            alignment_weight(b.atoms[j - 1].token),
           )
           let next_state = pair_changed_state(state, false, true)
           pair_consider(
@@ -1027,14 +1027,14 @@ fn window_changes(
   let mut mass = 0
   let mut quality_mass = 0
   for atom in old_stream.atoms {
-    let token_weight = weight(atom.token.kind)
+    let token_weight = alignment_weight(atom.token)
     mass += token_weight
     if high_quality_kind(atom.token.kind) {
       quality_mass += token_weight
     }
   }
   for atom in new_stream.atoms {
-    let token_weight = weight(atom.token.kind)
+    let token_weight = alignment_weight(atom.token)
     mass += token_weight
     if high_quality_kind(atom.token.kind) {
       quality_mass += token_weight
@@ -1050,7 +1050,7 @@ fn window_changes(
       PairEqual(old_index, new_index) => {
         let old_atom = old_stream.atoms[old_index]
         let new_atom = new_stream.atoms[new_index]
-        let token_weight = weight(old_atom.token.kind)
+        let token_weight = alignment_weight(old_atom.token)
         if token_weight > 0 && old_atom.line != new_atom.line {
           crosses_line = true
         }

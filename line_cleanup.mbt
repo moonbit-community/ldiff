@@ -65,7 +65,7 @@ fn is_soft_line(
   let mut significant = false
   let mut quality = 0
   for tok in toks {
-    quality += weight(tok.kind)
+    quality += alignment_weight(tok)
     match tok.kind {
       Space | Filler => ()
       _ => filler_only = false

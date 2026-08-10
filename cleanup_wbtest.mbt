@@ -54,7 +54,7 @@ fn ops_cost(ops : ArrayView[Op]) -> Int {
     cost += match op {
       OEq(_) => 0
       OSub(a, b) => subst_cost(a, b).unwrap()
-      ODel(t) | OIns(t) => weight(t.kind)
+      ODel(t) | OIns(t) => alignment_weight(t)
     }
   }
   cost
@@ -162,6 +162,15 @@ test "token boundary score follows the language-aware priority table" {
   assert_eq(token_boundary_score(Some(word), Some(punct)), 2)
   assert_eq(token_boundary_score(Some(word), Some(string)), 1)
   assert_eq(token_boundary_score(Some(word), Some(word)), 0)
+}
+
+///|
+test "formatter trailing comma keeps repeated closing boilerplate soft" {
+  let old = ["}),", "old body", "}),"]
+  let new = ["}),", "new body", "}),"]
+  assert_eq(tok_mass(tokenize_line("}),")), 13)
+  assert_true(is_soft_line(old, new, 0, 0))
+  assert_true(is_soft_line(old, new, 2, 2))
 }
 
 ///|
