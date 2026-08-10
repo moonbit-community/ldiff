@@ -85,7 +85,7 @@ pub fn side_by_side_line_html(
 ) -> String {
   let buf = StringBuilder::new()
   buf <+ "<table class=\"split\">\n"
-  for h in @diff.Diff(old~, new~).group(context~) {
+  for h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
     if line_numbers {
       buf <+
         "<tr><td class=\"hunk-header\" colspan=\"4\">\{esc(h.header())}</td></tr>\n"
@@ -205,7 +205,7 @@ pub fn unified_line_html(
   } else {
     buf <+ "<pre class=\"unified\">\n"
   }
-  for h in @diff.Diff(old~, new~).group(context~) {
+  for h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
     if line_numbers {
       buf <+
         "<tr><td class=\"hunk-header\" colspan=\"3\">\{esc(h.header())}</td></tr>\n"
