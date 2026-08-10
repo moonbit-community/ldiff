@@ -80,7 +80,7 @@ fn alignment_weight(token : Tok) -> Int {
 fn push_comment_tokens(toks : Array[Tok], body : String) -> Unit {
   let mut rest = body.view()
   while rest is [_, ..] {
-    rest = lexscan rest with longest {
+    rest = lexmatch rest with longest {
       (re"^//+" as t, after=next) => {
         toks.push({ kind: Filler, text: t.to_owned() })
         next
