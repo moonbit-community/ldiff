@@ -71,106 +71,228 @@ fn split_line_replacement(
 }
 
 ///|
+fn append_split_line_hunk(
+  buf : StringBuilder,
+  h : @diff.Hunk[String],
+  hunk_index : Int,
+  line_numbers : Bool,
+  hunk_notes : ArrayView[HunkNote?],
+) -> Unit {
+  if line_numbers {
+    buf <+
+      "<tr><td class=\"hunk-header\" colspan=\"4\">\{esc(h.header())}</td></tr>\n"
+  } else {
+    buf <+
+      "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
+  }
+  match hunk_note_at(hunk_notes, hunk_index) {
+    Some(note) => table_hunk_note(buf, note, if line_numbers { 4 } else { 2 })
+    None => ()
+  }
+  let edits = h.edits()
+  let old_view = h.old_view()
+  let new_view = h.new_view()
+  let mut index = 0
+  while index < edits.length() {
+    match edits[index] {
+      Delete(old_index~, old_len~, ..) if index + 1 < edits.length() &&
+        edits[index + 1] is Insert(..) => {
+        guard! edits[index + 1] is Insert(new_index~, new_len~, ..)
+        split_line_replacement(
+          buf,
+          old_view.view(start=old_index, end=old_index + old_len),
+          new_view.view(start=new_index, end=new_index + new_len),
+          old_index,
+          new_index,
+          line_numbers,
+        )
+        index += 2
+      }
+      Equal(old_index~, new_index~, len~) => {
+        for offset, line in old_view.view(start=old_index, end=old_index + len) {
+          split_row(
+            buf,
+            Some(old_index + offset + 1),
+            "ctx",
+            esc(line),
+            Some(new_index + offset + 1),
+            "ctx",
+            esc(line),
+            line_numbers,
+          )
+        }
+        index += 1
+      }
+      Delete(old_index~, old_len~, ..) => {
+        for
+          offset, line in old_view.view(
+            start=old_index,
+            end=old_index + old_len,
+          ) {
+          split_row(
+            buf,
+            Some(old_index + offset + 1),
+            "del",
+            esc(line),
+            None,
+            "empty",
+            "",
+            line_numbers,
+          )
+        }
+        index += 1
+      }
+      Insert(new_index~, new_len~, ..) => {
+        for
+          offset, line in new_view.view(
+            start=new_index,
+            end=new_index + new_len,
+          ) {
+          split_row(
+            buf,
+            None,
+            "empty",
+            "",
+            Some(new_index + offset + 1),
+            "add",
+            esc(line),
+            line_numbers,
+          )
+        }
+        index += 1
+      }
+    }
+  }
+}
+
+///|
 /// Render a plain line-level diff as a GitHub-style side-by-side HTML table.
 /// Replacement blocks pair old and new lines by position, leaving the other
 /// cell empty when one side has extra lines. Source text is HTML-escaped, but
 /// no MoonBit lexing, line cleanup, or intraline highlighting is performed.
 /// Set `line_numbers=true` for old-number, old-code, new-number, new-code
-/// columns.
+/// columns. `hunk_notes[index]` optionally annotates that zero-based hunk.
 pub fn side_by_side_line_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
   line_numbers? : Bool = false,
+  hunk_notes? : ArrayView[HunkNote?] = [],
 ) -> String {
   let buf = StringBuilder::new()
   buf <+ "<table class=\"split\">\n"
-  for h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
-    if line_numbers {
-      buf <+
-        "<tr><td class=\"hunk-header\" colspan=\"4\">\{esc(h.header())}</td></tr>\n"
-    } else {
-      buf <+
-        "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
-    }
-    let edits = h.edits()
-    let old_view = h.old_view()
-    let new_view = h.new_view()
-    let mut index = 0
-    while index < edits.length() {
-      match edits[index] {
-        Delete(old_index~, old_len~, ..) if index + 1 < edits.length() &&
-          edits[index + 1] is Insert(..) => {
-          guard! edits[index + 1] is Insert(new_index~, new_len~, ..)
-          split_line_replacement(
-            buf,
-            old_view.view(start=old_index, end=old_index + old_len),
-            new_view.view(start=new_index, end=new_index + new_len),
-            old_index,
-            new_index,
-            line_numbers,
-          )
-          index += 2
-        }
-        Equal(old_index~, new_index~, len~) => {
-          for
-            offset, line in old_view.view(start=old_index, end=old_index + len) {
-            split_row(
-              buf,
-              Some(old_index + offset + 1),
-              "ctx",
-              esc(line),
-              Some(new_index + offset + 1),
-              "ctx",
-              esc(line),
-              line_numbers,
-            )
-          }
-          index += 1
-        }
-        Delete(old_index~, old_len~, ..) => {
-          for
-            offset, line in old_view.view(
-              start=old_index,
-              end=old_index + old_len,
-            ) {
-            split_row(
-              buf,
-              Some(old_index + offset + 1),
-              "del",
-              esc(line),
-              None,
-              "empty",
-              "",
-              line_numbers,
-            )
-          }
-          index += 1
-        }
-        Insert(new_index~, new_len~, ..) => {
-          for
-            offset, line in new_view.view(
-              start=new_index,
-              end=new_index + new_len,
-            ) {
-            split_row(
-              buf,
-              None,
-              "empty",
-              "",
-              Some(new_index + offset + 1),
-              "add",
-              esc(line),
-              line_numbers,
-            )
-          }
-          index += 1
-        }
-      }
-    }
+  for
+    hunk_index, h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
+    append_split_line_hunk(buf, h, hunk_index, line_numbers, hunk_notes)
   }
   buf <+ "</table>\n"
   buf.to_string()
+}
+
+///|
+/// Render each plain Patience-diff hunk as its own split HTML table. Array
+/// indexes match `unified_line_hunks` and the zero-based `hunk_notes` indexes.
+pub fn side_by_side_line_hunks_html(
+  old~ : ArrayView[String],
+  new~ : ArrayView[String],
+  context? : Int = 3,
+  line_numbers? : Bool = false,
+  hunk_notes? : ArrayView[HunkNote?] = [],
+) -> Array[String] {
+  let rendered : Array[String] = []
+  for
+    hunk_index, h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
+    let buf = StringBuilder::new()
+    buf <+ "<table class=\"split\">\n"
+    append_split_line_hunk(buf, h, hunk_index, line_numbers, hunk_notes)
+    buf <+ "</table>\n"
+    rendered.push(buf.to_string())
+  }
+  rendered
+}
+
+///|
+fn append_unified_line_hunk(
+  buf : StringBuilder,
+  h : @diff.Hunk[String],
+  hunk_index : Int,
+  line_numbers : Bool,
+  hunk_notes : ArrayView[HunkNote?],
+) -> Unit {
+  if line_numbers {
+    buf <+
+      "<tr><td class=\"hunk-header\" colspan=\"3\">\{esc(h.header())}</td></tr>\n"
+  } else {
+    buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
+  }
+  match hunk_note_at(hunk_notes, hunk_index) {
+    Some(note) =>
+      if line_numbers {
+        table_hunk_note(buf, note, 3)
+      } else {
+        pre_hunk_note(buf, note)
+      }
+    None => ()
+  }
+  let old_view = h.old_view()
+  let new_view = h.new_view()
+  for edit in h.edits() {
+    match edit {
+      Equal(old_index~, new_index~, len~) =>
+        for offset, value in old_view.view(start=old_index, end=old_index + len) {
+          if line_numbers {
+            unified_numbered_line(
+              buf,
+              "ctx",
+              " ",
+              Some(old_index + offset + 1),
+              Some(new_index + offset + 1),
+              esc(value),
+            )
+          } else {
+            unified_text_line(buf, "ctx", " ", esc(value))
+          }
+        }
+      Delete(old_index~, old_len~, ..) =>
+        for
+          offset, value in old_view.view(
+            start=old_index,
+            end=old_index + old_len,
+          ) {
+          if line_numbers {
+            unified_numbered_line(
+              buf,
+              "del",
+              "-",
+              Some(old_index + offset + 1),
+              None,
+              esc(value),
+            )
+          } else {
+            unified_text_line(buf, "del", "-", esc(value))
+          }
+        }
+      Insert(new_index~, new_len~, ..) =>
+        for
+          offset, value in new_view.view(
+            start=new_index,
+            end=new_index + new_len,
+          ) {
+          if line_numbers {
+            unified_numbered_line(
+              buf,
+              "add",
+              "+",
+              None,
+              Some(new_index + offset + 1),
+              esc(value),
+            )
+          } else {
+            unified_text_line(buf, "add", "+", esc(value))
+          }
+        }
+    }
+  }
 }
 
 ///|
@@ -178,97 +300,24 @@ pub fn side_by_side_line_html(
 /// emit every deletion before every insertion. Source text is HTML-escaped,
 /// but no MoonBit lexing, line cleanup, or intraline highlighting is
 /// performed. Set `line_numbers=true` for old-number, new-number, and
-/// prefixed-code columns.
+/// prefixed-code columns. `hunk_notes[index]` optionally annotates that
+/// zero-based hunk.
 pub fn unified_line_html(
   old~ : ArrayView[String],
   new~ : ArrayView[String],
   context? : Int = 3,
   line_numbers? : Bool = false,
+  hunk_notes? : ArrayView[HunkNote?] = [],
 ) -> String {
   let buf = StringBuilder::new()
-  fn line(class_name : String, prefix : String, body : String) {
-    buf <+ "<span class=\"\{class_name}\">\{prefix}\{body}</span>\n"
-  }
-  fn numbered_line(
-    class_name : String,
-    prefix : String,
-    old_number : Int?,
-    new_number : Int?,
-    body : String,
-  ) {
-    buf <+
-      "<tr><td class=\"line-number old-line-number\">\{line_number_text(old_number)}</td><td class=\"line-number new-line-number\">\{line_number_text(new_number)}</td><td class=\"\{class_name}\">\{prefix}\{body}</td></tr>\n"
-  }
-
   if line_numbers {
     buf <+ "<table class=\"unified numbered\">\n"
   } else {
     buf <+ "<pre class=\"unified\">\n"
   }
-  for h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
-    if line_numbers {
-      buf <+
-        "<tr><td class=\"hunk-header\" colspan=\"3\">\{esc(h.header())}</td></tr>\n"
-    } else {
-      buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
-    }
-    let old_view = h.old_view()
-    let new_view = h.new_view()
-    for edit in h.edits() {
-      match edit {
-        Equal(old_index~, new_index~, len~) =>
-          for
-            offset, value in old_view.view(start=old_index, end=old_index + len) {
-            if line_numbers {
-              numbered_line(
-                "ctx",
-                " ",
-                Some(old_index + offset + 1),
-                Some(new_index + offset + 1),
-                esc(value),
-              )
-            } else {
-              line("ctx", " ", esc(value))
-            }
-          }
-        Delete(old_index~, old_len~, ..) =>
-          for
-            offset, value in old_view.view(
-              start=old_index,
-              end=old_index + old_len,
-            ) {
-            if line_numbers {
-              numbered_line(
-                "del",
-                "-",
-                Some(old_index + offset + 1),
-                None,
-                esc(value),
-              )
-            } else {
-              line("del", "-", esc(value))
-            }
-          }
-        Insert(new_index~, new_len~, ..) =>
-          for
-            offset, value in new_view.view(
-              start=new_index,
-              end=new_index + new_len,
-            ) {
-            if line_numbers {
-              numbered_line(
-                "add",
-                "+",
-                None,
-                Some(new_index + offset + 1),
-                esc(value),
-              )
-            } else {
-              line("add", "+", esc(value))
-            }
-          }
-      }
-    }
+  for
+    hunk_index, h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
+    append_unified_line_hunk(buf, h, hunk_index, line_numbers, hunk_notes)
   }
   if line_numbers {
     buf <+ "</table>\n"
@@ -276,4 +325,34 @@ pub fn unified_line_html(
     buf <+ "</pre>\n"
   }
   buf.to_string()
+}
+
+///|
+/// Render each plain Patience-diff hunk as its own unified HTML block. Array
+/// indexes match `unified_line_hunks` and the zero-based `hunk_notes` indexes.
+pub fn unified_line_hunks_html(
+  old~ : ArrayView[String],
+  new~ : ArrayView[String],
+  context? : Int = 3,
+  line_numbers? : Bool = false,
+  hunk_notes? : ArrayView[HunkNote?] = [],
+) -> Array[String] {
+  let rendered : Array[String] = []
+  for
+    hunk_index, h in @diff.Diff(old~, new~, algorithm=Patience).group(context~) {
+    let buf = StringBuilder::new()
+    if line_numbers {
+      buf <+ "<table class=\"unified numbered\">\n"
+    } else {
+      buf <+ "<pre class=\"unified\">\n"
+    }
+    append_unified_line_hunk(buf, h, hunk_index, line_numbers, hunk_notes)
+    if line_numbers {
+      buf <+ "</table>\n"
+    } else {
+      buf <+ "</pre>\n"
+    }
+    rendered.push(buf.to_string())
+  }
+  rendered
 }

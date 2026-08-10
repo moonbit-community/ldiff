@@ -23,7 +23,7 @@ priv enum SideLoad {
   NotRequested
   Loading
   Ready(Array[String])
-  CannotRender(String)
+  CannotRender(String, Bool)
   LoadFailed(String)
 } derive(Eq)
 
@@ -77,6 +77,8 @@ priv struct Model {
   route : CommitRef?
   share_url : String?
   copy_status : CopyStatus
+  backend_status : BackendStatus
+  analysis_status : AnalysisStatus
 } derive(Eq)
 
 ///|
@@ -89,6 +91,8 @@ fn initial_model() -> Model {
     route: None,
     share_url: None,
     copy_status: CopyReady,
+    backend_status: BackendProbing,
+    analysis_status: AnalysisIdle,
   }
 }
 
@@ -105,6 +109,10 @@ priv enum Msg {
   ToggleFile(Int, Int)
   RetryFile(Int, Int)
   SourceLoaded(Int, Int, SourceSide, Result[(String, Bytes), Error])
+  HealthLoaded(Result[HealthResponse, Error])
+  AnalyzeChanges
+  AnalysisLoaded(Int, Result[AnalysisResponse, String])
+  ToggleAnalysisGroup(Int)
 }
 
 ///|
@@ -259,6 +267,41 @@ fn with_phase(model : Model, phase : Phase) -> Model {
     route: model.route,
     share_url: model.share_url,
     copy_status: model.copy_status,
+    backend_status: model.backend_status,
+    analysis_status: model.analysis_status,
+  }
+}
+
+///|
+fn with_backend_status(model : Model, backend_status : BackendStatus) -> Model {
+  {
+    input: model.input,
+    generation: model.generation,
+    view_mode: model.view_mode,
+    phase: model.phase,
+    route: model.route,
+    share_url: model.share_url,
+    copy_status: model.copy_status,
+    backend_status,
+    analysis_status: model.analysis_status,
+  }
+}
+
+///|
+fn with_analysis_status(
+  model : Model,
+  analysis_status : AnalysisStatus,
+) -> Model {
+  {
+    input: model.input,
+    generation: model.generation,
+    view_mode: model.view_mode,
+    phase: model.phase,
+    route: model.route,
+    share_url: model.share_url,
+    copy_status: model.copy_status,
+    backend_status: model.backend_status,
+    analysis_status,
   }
 }
 
@@ -278,6 +321,8 @@ fn begin_commit_load(
       route: Some(reference),
       share_url: Some(playground_share_url(reference)),
       copy_status: CopyReady,
+      backend_status: model.backend_status,
+      analysis_status: AnalysisIdle,
     },
     commit_request(reference, generation, 1, emit),
   )
@@ -286,11 +331,13 @@ fn begin_commit_load(
 ///|
 fn app_init(emit : @rabbita.Emit[Msg]) -> (Model, @rabbita.Cmd) {
   let model = initial_model()
-  match reference_from_playground_url(browser_current_url()) {
+  let (next, command) = match
+    reference_from_playground_url(browser_current_url()) {
     Ok(Some(reference)) => begin_commit_load(model, reference, emit)
     Ok(None) => (model, @rabbita.none)
     Err(message) => (with_phase(model, LoadFailed(message)), @rabbita.none)
   }
+  (next, @rabbita.batch([health_request(emit), command]))
 }
 
 ///|
@@ -305,8 +352,93 @@ fn side_from_result(result : Result[(String, Bytes), Error]) -> SideLoad {
     Ok((_, bytes)) =>
       match check_source(bytes) {
         Renderable(lines) => Ready(lines)
-        Rejected(reason) => CannotRender(reason)
+        Rejected(reason, skippable) => CannotRender(reason, skippable)
       }
+  }
+}
+
+///|
+fn prepare_all_sources(
+  view : CommitView,
+  generation : Int,
+  emit : @rabbita.Emit[Msg],
+) -> (CommitView, Array[@rabbita.Cmd]) {
+  let files = view.files.copy()
+  let commands : Array[@rabbita.Cmd] = []
+  for index, file in files {
+    let pair = source_pair(view.reference, view.sha, view.parent_sha, file.file)
+    let old_side = match (file.old_side, pair.old_url) {
+      (NotRequested | LoadFailed(_), Some(url)) => {
+        commands.push(source_request(url, generation, index, Old, emit))
+        Loading
+      }
+      (side, _) => side
+    }
+    let new_side = match (file.new_side, pair.new_url) {
+      (NotRequested | LoadFailed(_), Some(url)) => {
+        commands.push(source_request(url, generation, index, New, emit))
+        Loading
+      }
+      (side, _) => side
+    }
+    files[index] = {
+      file: file.file,
+      diff_mode: file.diff_mode,
+      expanded: file.expanded,
+      old_side,
+      new_side,
+    }
+  }
+  (
+    {
+      reference: view.reference,
+      sha: view.sha,
+      parent_sha: view.parent_sha,
+      message: view.message,
+      html_url: view.html_url,
+      stats: view.stats,
+      total_files: view.total_files,
+      files,
+    },
+    commands,
+  )
+}
+
+///|
+fn continue_analysis(
+  model : Model,
+  emit : @rabbita.Emit[Msg],
+) -> (Model, @rabbita.Cmd) {
+  guard model.analysis_status is PreparingSources &&
+    model.phase is Showing(view) else {
+    return (model, @rabbita.none)
+  }
+  for file in view.files {
+    match blocking_source_problem(file) {
+      Some(message) =>
+        return (
+          with_analysis_status(
+            model,
+            AnalysisFailed(
+              "Could not prepare \{file.file.filename}: \{message}",
+            ),
+          ),
+          @rabbita.none,
+        )
+      None => ()
+    }
+  }
+  if sources_pending(view) {
+    return (model, @rabbita.none)
+  }
+  match build_analysis_request(view) {
+    Err(message) =>
+      (with_analysis_status(model, AnalysisFailed(message)), @rabbita.none)
+    Ok((payload, _)) =>
+      (
+        with_analysis_status(model, Analyzing),
+        analyze_request(payload, model.generation, emit),
+      )
   }
 }
 
@@ -327,6 +459,8 @@ fn update(
           route: model.route,
           share_url: model.share_url,
           copy_status: CopyReady,
+          backend_status: model.backend_status,
+          analysis_status: model.analysis_status,
         },
         @rabbita.none,
       )
@@ -344,6 +478,8 @@ fn update(
           route: model.route,
           share_url: model.share_url,
           copy_status: model.copy_status,
+          backend_status: model.backend_status,
+          analysis_status: model.analysis_status,
         },
         @rabbita.none,
       )
@@ -359,6 +495,8 @@ fn update(
               route: model.route,
               share_url: model.share_url,
               copy_status: CopyReady,
+              backend_status: model.backend_status,
+              analysis_status: AnalysisIdle,
             },
             @rabbita.none,
           )
@@ -385,6 +523,8 @@ fn update(
               route: None,
               share_url: None,
               copy_status: CopyReady,
+              backend_status: model.backend_status,
+              analysis_status: AnalysisIdle,
             },
             @rabbita.none,
           )
@@ -398,6 +538,8 @@ fn update(
               route: None,
               share_url: None,
               copy_status: CopyReady,
+              backend_status: model.backend_status,
+              analysis_status: AnalysisIdle,
             },
             @rabbita.none,
           )
@@ -429,6 +571,8 @@ fn update(
           route: model.route,
           share_url: model.share_url,
           copy_status: Copied,
+          backend_status: model.backend_status,
+          analysis_status: model.analysis_status,
         },
         @rabbita.none,
       )
@@ -442,9 +586,105 @@ fn update(
           route: model.route,
           share_url: model.share_url,
           copy_status: CopyError(message),
+          backend_status: model.backend_status,
+          analysis_status: model.analysis_status,
         },
         @rabbita.none,
       )
+    HealthLoaded(result) => {
+      let status = match result {
+        Ok(response) if response.version == ANALYSIS_VERSION &&
+          response.ok &&
+          response.openseek_available => BackendReady
+        _ => BackendMissing
+      }
+      (with_backend_status(model, status), @rabbita.none)
+    }
+    AnalyzeChanges => {
+      guard model.backend_status is BackendReady && model.phase is Showing(view) else {
+        return (model, @rabbita.none)
+      }
+      if view.files.length() > MAX_ANALYSIS_FILES {
+        return (
+          with_analysis_status(
+            model,
+            AnalysisFailed(
+              "This commit has more than 50 files and cannot be analyzed in one request.",
+            ),
+          ),
+          @rabbita.none,
+        )
+      }
+      let (prepared_view, source_commands) = prepare_all_sources(
+        view,
+        model.generation,
+        emit,
+      )
+      let preparing = with_analysis_status(
+        with_phase(model, Showing(prepared_view)),
+        PreparingSources,
+      )
+      let (next, analysis_command) = continue_analysis(preparing, emit)
+      (next, @rabbita.batch(source_commands..push(analysis_command)))
+    }
+    ToggleAnalysisGroup(index) =>
+      match model.analysis_status {
+        AnalysisDone(result, skipped, expanded) =>
+          match expanded.get(index) {
+            Some(is_expanded) => {
+              let changed = expanded.copy()
+              changed[index] = !is_expanded
+              (
+                with_analysis_status(
+                  model,
+                  AnalysisDone(result, skipped, changed),
+                ),
+                @rabbita.none,
+              )
+            }
+            None => (model, @rabbita.none)
+          }
+        _ => (model, @rabbita.none)
+      }
+    AnalysisLoaded(generation, result) => {
+      if generation != model.generation || !(model.analysis_status is Analyzing) {
+        return (model, @rabbita.none)
+      }
+      match result {
+        Err(message) =>
+          (with_analysis_status(model, AnalysisFailed(message)), @rabbita.none)
+        Ok(response) if response.version == ANALYSIS_VERSION && response.ok => {
+          guard model.phase is Showing(view) else {
+            return (model, @rabbita.none)
+          }
+          let skipped = match build_analysis_request(view) {
+            Ok((_, skipped)) => skipped
+            Err(_) => []
+          }
+          (
+            with_analysis_status(
+              model,
+              AnalysisDone(
+                response.analysis,
+                skipped,
+                initial_group_expansion(response.analysis),
+              ),
+            ),
+            @rabbita.none,
+          )
+        }
+        Ok(_) =>
+          (
+            with_analysis_status(
+              model,
+              AnalysisFailed(
+                "The analysis service returned an invalid response.",
+              ),
+            ),
+            @rabbita.none,
+          )
+      }
+    }
     CommitPageLoaded(generation, page, result) => {
       if generation != model.generation {
         return (model, @rabbita.none)
@@ -615,10 +855,15 @@ fn update(
             new_side: loaded,
           }
       }
-      (
-        with_phase(model, Showing(set_file_state(view, index, changed))),
-        @rabbita.none,
+      let changed_model = with_phase(
+        model,
+        Showing(set_file_state(view, index, changed)),
       )
+      if model.analysis_status is PreparingSources {
+        continue_analysis(changed_model, emit)
+      } else {
+        (changed_model, @rabbita.none)
+      }
     }
   }
 }

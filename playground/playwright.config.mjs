@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
+  testMatch: "playground.spec.mjs",
   fullyParallel: true,
   reporter: "line",
   expect: {

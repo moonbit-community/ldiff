@@ -154,7 +154,7 @@ fn source_pair(
 ///|
 priv enum CheckedSource {
   Renderable(Array[String])
-  Rejected(String)
+  Rejected(String, Bool)
 }
 
 ///|
@@ -166,25 +166,25 @@ const MAX_SOURCE_LINES : Int = 20_000
 ///|
 fn check_source(bytes : Bytes) -> CheckedSource {
   if bytes.length() > MAX_SOURCE_BYTES {
-    return Rejected("Cannot render: one side is larger than 1 MiB.")
+    return Rejected("Cannot render: one side is larger than 1 MiB.", false)
   }
   let text = try @utf8.decode(bytes) catch {
     _ =>
       return Rejected(
-        "Cannot render: the file is binary or is not valid UTF-8.",
+        "Cannot render: the file is binary or is not valid UTF-8.", true,
       )
   } noraise {
     text => text
   }
   if text.contains("\u{0000}") {
-    return Rejected("Cannot render: the file contains a NUL byte.")
+    return Rejected("Cannot render: the file contains a NUL byte.", true)
   }
   let mut line_count = 1
   for c in text {
     if c == '\n' {
       line_count += 1
       if line_count > MAX_SOURCE_LINES {
-        return Rejected("Cannot render: one side exceeds 20,000 lines.")
+        return Rejected("Cannot render: one side exceeds 20,000 lines.", false)
       }
     }
   }

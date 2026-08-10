@@ -4,23 +4,40 @@ package "moonbit-community/ldiff"
 // Values
 pub fn html_page(title~ : String, String) -> String
 
-pub fn side_by_side_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool) -> String
+pub fn side_by_side_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> String
 
-pub fn side_by_side_line_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool) -> String
+pub fn side_by_side_hunks_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> Array[String]
+
+pub fn side_by_side_line_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> String
+
+pub fn side_by_side_line_hunks_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> Array[String]
 
 pub fn similarity(String, String) -> Int
 
 pub fn tokenize_line(String) -> Array[Tok]
 
-pub fn unified_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool) -> String
+pub fn unified_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> String
 
-pub fn unified_line_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool) -> String
+pub fn unified_hunks(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool) -> Array[String]
+
+pub fn unified_hunks_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_cleanup? : Bool, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> Array[String]
+
+pub fn unified_line_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> String
+
+pub fn unified_line_hunks(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int) -> Array[String]
+
+pub fn unified_line_hunks_html(old~ : ArrayView[String], new~ : ArrayView[String], context? : Int, line_numbers? : Bool, hunk_notes? : ArrayView[HunkNote?]) -> Array[String]
 
 pub fn weight(TokKind) -> Int
 
 // Errors
 
 // Types and methods
+pub(all) struct HunkNote {
+  title : String
+  body : String
+} derive(Eq)
+
 pub struct Tok {
   kind : TokKind
   text : String

@@ -40,7 +40,7 @@ fn file_label(file : ApiFile) -> String {
 ///|
 fn source_problem(side : SideLoad) -> String? {
   match side {
-    CannotRender(message) | LoadFailed(message) => Some(message)
+    CannotRender(message, _) | LoadFailed(message) => Some(message)
     _ => None
   }
 }
@@ -222,6 +222,29 @@ fn workspace_actions(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html 
             attrs=@html.Attrs::build().aria_label("Open commit on GitHub"),
             @html.span(class="source-icon", "↗"),
           ),
+          if model.backend_status is BackendReady {
+            let (label, busy) = match model.analysis_status {
+              PreparingSources => ("Preparing source…", true)
+              Analyzing => ("Analyzing…", true)
+              AnalysisDone(_, _, _) => ("Analyze again", false)
+              AnalysisFailed(_) => ("Retry analysis", false)
+              AnalysisIdle => ("Analyze changes", false)
+            }
+            @html.button(
+              type_="button",
+              class="toolbar-button analyze-button",
+              title=label,
+              disabled=busy,
+              attrs=@html.Attrs::build().aria_label(label),
+              on_click=emit(AnalyzeChanges),
+              [
+                @html.span(class="analyze-icon", "✦"),
+                @html.span(class="analyze-label", label),
+              ],
+            )
+          } else {
+            @html.nothing
+          },
           @html.span(class="toolbar-divider", ""),
           @html.button(
             type_="button",
@@ -359,17 +382,299 @@ fn file_card(
 }
 
 ///|
-fn commit_view(
+fn file_list_view(
   commit : CommitView,
   model : Model,
   emit : @rabbita.Emit[Msg],
 ) -> @rabbita.Html {
+  if commit.files.length() == 0 {
+    return @html.div(
+      class="empty-state",
+      "No changed files were returned for this commit.",
+    )
+  }
   let file_views : Array[@rabbita.Html] = []
   for index, file in commit.files {
     file_views.push(
       file_card(file, model.generation, index, model.view_mode, emit),
     )
   }
+  @html.div(class="file-list", file_views)
+}
+
+///|
+priv struct RenderedAnalysisHunk {
+  file : FileState
+  html : String
+}
+
+///|
+fn analysis_hunk_count(hunks : ArrayView[AnalyzedHunk]) -> String {
+  if hunks.length() == 1 {
+    "1 hunk"
+  } else {
+    "\{hunks.length()} hunks"
+  }
+}
+
+///|
+fn analysis_file_hunks_html(
+  file : FileState,
+  file_index : Int,
+  result : AnalysisResult,
+  mode : ViewMode,
+) -> Array[String] {
+  guard (file.old_side, file.new_side) is (Ready(old), Ready(new)) else {
+    return []
+  }
+  let hunk_notes = notes_for_file(result, file, file_index)
+  match (file.diff_mode, mode) {
+    (MoonBitDiff, Split) =>
+      @ldiff.side_by_side_hunks_html(
+        old~,
+        new~,
+        context=3,
+        line_cleanup=true,
+        line_numbers=true,
+        hunk_notes~,
+      )
+    (MoonBitDiff, Unified) =>
+      @ldiff.unified_hunks_html(
+        old~,
+        new~,
+        context=3,
+        line_cleanup=true,
+        line_numbers=true,
+        hunk_notes~,
+      )
+    (LineDiff, Split) =>
+      @ldiff.side_by_side_line_hunks_html(
+        old~,
+        new~,
+        context=3,
+        line_numbers=true,
+        hunk_notes~,
+      )
+    (LineDiff, Unified) =>
+      @ldiff.unified_line_hunks_html(
+        old~,
+        new~,
+        context=3,
+        line_numbers=true,
+        hunk_notes~,
+      )
+  }
+}
+
+///|
+fn analysis_wants_file(wanted : Map[String, Unit], file_index : Int) -> Bool {
+  let prefix = "f\{file_index}-h"
+  for id, _ in wanted {
+    if id.has_prefix(prefix) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn rendered_analysis_hunks(
+  commit : CommitView,
+  result : AnalysisResult,
+  expanded : ArrayView[Bool],
+  mode : ViewMode,
+) -> Map[String, RenderedAnalysisHunk] {
+  let wanted : Map[String, Unit] = Map([])
+  for group_index, group in result.groups {
+    if expanded.get(group_index) == Some(true) {
+      for hunk in group.hunks {
+        wanted[hunk.id] = ()
+      }
+    }
+  }
+  let rendered : Map[String, RenderedAnalysisHunk] = Map([])
+  for file_index, file in commit.files {
+    if !analysis_wants_file(wanted, file_index) {
+      continue
+    }
+    let hunks = analysis_file_hunks_html(file, file_index, result, mode)
+    for hunk_index, html in hunks {
+      let id = "f\{file_index}-h\{hunk_index}"
+      if wanted.contains(id) {
+        rendered[id] = { file, html }
+      }
+    }
+  }
+  rendered
+}
+
+///|
+#warnings("-alert_xss_vulnerable")
+fn analysis_hunk_view(
+  hunk : AnalyzedHunk,
+  rendered : Map[String, RenderedAnalysisHunk],
+) -> @rabbita.Html {
+  match rendered.get(hunk.id) {
+    Some(item) =>
+      @html.article(class="analysis-hunk", [
+        @html.div(class="analysis-hunk-heading", [
+          @html.div(class="analysis-hunk-file", [
+            @html.span(class=status_class(item.file.file.status), ""),
+            @html.code(class="file-path", file_label(item.file.file)),
+          ]),
+          @html.span(class="status-label", status_label(item.file.file.status)),
+        ]),
+        // ldiff escapes source text, hunk headers, group titles, and hunk
+        // explanations before this raw HTML reaches the application.
+        @html.div(
+          class="diff-scroll",
+          attrs=@html.Attrs::build().inner_html(item.html),
+          ([] : Array[@rabbita.Html]),
+        ),
+      ])
+    None =>
+      @html.article(class="analysis-hunk analysis-hunk-error", [
+        @html.p(
+          "The analysis referenced \{hunk.id}, but that diff hunk could not be rendered.",
+        ),
+      ])
+  }
+}
+
+///|
+fn analysis_group_view(
+  group : AnalysisGroup,
+  group_index : Int,
+  expanded : Bool,
+  rendered : Map[String, RenderedAnalysisHunk],
+  emit : @rabbita.Emit[Msg],
+) -> @rabbita.Html {
+  let hunk_views : Array[@rabbita.Html] = []
+  if expanded {
+    for hunk in group.hunks {
+      hunk_views.push(analysis_hunk_view(hunk, rendered))
+    }
+  }
+  let action = if expanded { "Collapse" } else { "Expand" }
+  @html.article(
+    class=if expanded { "analysis-group expanded" } else { "analysis-group" },
+    [
+      @html.button(
+        type_="button",
+        class="analysis-group-toggle",
+        attrs=@html.Attrs::build()
+          .aria_expanded(if expanded { "true" } else { "false" })
+          .aria_label("\{action} \{group.title}"),
+        on_click=emit(ToggleAnalysisGroup(group_index)),
+        [
+          @html.span(class="analysis-group-disclosure", ""),
+          @html.span(class="analysis-group-title", group.title),
+          @html.span(
+            class="analysis-hunk-count",
+            analysis_hunk_count(group.hunks),
+          ),
+        ],
+      ),
+      @html.p(group.description),
+      if expanded {
+        @html.div(class="analysis-hunks", hunk_views)
+      } else {
+        @html.nothing
+      },
+    ],
+  )
+}
+
+///|
+fn analysis_overview(
+  commit : CommitView,
+  mode : ViewMode,
+  status : AnalysisStatus,
+  emit : @rabbita.Emit[Msg],
+) -> @rabbita.Html {
+  match status {
+    AnalysisIdle => @html.nothing
+    PreparingSources =>
+      @html.section(class="analysis-card analysis-progress", [
+        @html.span(class="spinner", ""),
+        @html.div([
+          @html.h2("Preparing source files"),
+          @html.p(
+            "Loading both sides of every changed file before analysis. File cards stay as you left them.",
+          ),
+        ]),
+      ])
+    Analyzing =>
+      @html.section(class="analysis-card analysis-progress", [
+        @html.span(class="spinner", ""),
+        @html.div([
+          @html.h2("Analyzing changes"),
+          @html.p("OpenSeek is grouping the commit's hunks by function."),
+        ]),
+      ])
+    AnalysisFailed(message) =>
+      @html.section(class="analysis-card analysis-error", [
+        @html.div([@html.h2("Analysis failed"), @html.p(message)]),
+        @html.button(
+          type_="button",
+          class="secondary",
+          on_click=emit(AnalyzeChanges),
+          "Retry analysis",
+        ),
+      ])
+    AnalysisDone(result, skipped, expanded) => {
+      let rendered = rendered_analysis_hunks(commit, result, expanded, mode)
+      let group_views : Array[@rabbita.Html] = []
+      for group_index, group in result.groups {
+        group_views.push(
+          analysis_group_view(
+            group,
+            group_index,
+            expanded.get(group_index).unwrap_or(false),
+            rendered,
+            emit,
+          ),
+        )
+      }
+      let skipped_views : Array[@rabbita.Html] = []
+      for file in skipped {
+        skipped_views.push(
+          @html.li([@html.code(file.path), @html.span(" — \{file.reason}")]),
+        )
+      }
+      @html.section(class="analysis-card analysis-complete", [
+        @html.p(class="section-label", "OpenSeek functional analysis"),
+        @html.h2("Change groups"),
+        @html.p(class="analysis-summary", result.summary),
+        if skipped.length() > 0 {
+          @html.div(class="analysis-skipped", [
+            @html.p(
+              "Skipped \{skipped.length()} non-text \{if skipped.length() == 1 { "file" } else { "files" }}:",
+            ),
+            @html.ul(skipped_views),
+          ])
+        } else {
+          @html.nothing
+        },
+        if group_views.length() == 0 {
+          @html.p(
+            class="analysis-empty",
+            "No text diff hunks were available to group.",
+          )
+        } else {
+          @html.div(class="analysis-groups", group_views)
+        },
+      ])
+    }
+  }
+}
+
+///|
+fn commit_view(
+  commit : CommitView,
+  model : Model,
+  emit : @rabbita.Emit[Msg],
+) -> @rabbita.Html {
   @html.section(class="results", [
     @html.div(class="commit-card", [
       @html.div(class="commit-title", [
@@ -392,13 +697,10 @@ fn commit_view(
         @html.pre(class="commit-message", commit.message),
       ]),
     ]),
-    if commit.files.length() == 0 {
-      @html.div(
-        class="empty-state",
-        "No changed files were returned for this commit.",
-      )
-    } else {
-      @html.div(class="file-list", file_views)
+    analysis_overview(commit, model.view_mode, model.analysis_status, emit),
+    match model.analysis_status {
+      AnalysisDone(_, _, _) => @html.nothing
+      _ => file_list_view(commit, model, emit)
     },
   ])
 }
