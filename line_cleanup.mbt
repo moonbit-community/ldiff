@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Optional line-level semantic cleanup. The original Myers equalities are
+// Optional line-level semantic cleanup. The original patience equalities are
 // converted to unique internal anchors; selected low-information equalities
 // are reopened inside bounded windows and exact pairs found by the weighted
 // aligner are promoted back to unique anchors. A final patience diff can then
@@ -137,7 +137,7 @@ fn cleaned_diff_lines(
   for i, text in new {
     new_lines.push({ text, key: (1, i) })
   }
-  let raw = @diff.Diff(old~, new~)
+  let raw = @diff.Diff(old~, new~, algorithm=Patience)
   let edits = raw.edits()
   let soft = soft_equal_edits(edits, old, new)
   let mut next_anchor = 0

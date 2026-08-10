@@ -114,6 +114,52 @@ test "re-aligned identical meaningful line is rendered as context" {
 }
 
 ///|
+test "patience keeps an unchanged branch ahead of repeated tuple boilerplate" {
+  let old : Array[String] = (
+      #|            false,
+      #|        Some({ review: Some({ baseline: ReviewContent(_), .. }), .. }) =>
+      #|          ("Diff vs HEAD", "Quick diff against the HEAD version", false, false)
+      #|        Some({ review: Some({ baseline: ReviewMissing, .. }), .. }) =>
+      #|          (
+      #|            "New · no HEAD", "New file compared with an empty HEAD baseline", false,
+      #|            false,
+      #|          )
+      #|        Some({ review: Some({ baseline: ReviewBinary, .. }), .. }) =>
+    )
+    .split("\n")
+    .map(StringView::to_owned)
+    .collect()
+  let new : Array[String] = (
+      #|            false,
+      #|        Some({ review: Some({ baseline: ReviewContent(_), .. }), .. }) =>
+      #|          (
+      #|            "Diff vs baseline", "Quick diff against the review baseline", false,
+      #|            false,
+      #|          )
+      #|        Some({ review: Some({ baseline: ReviewMissing, .. }), .. }) =>
+      #|          (
+      #|            "New · no baseline", "New file compared with an empty review baseline",
+      #|            false, false,
+      #|          )
+      #|        Some({ review: Some({ baseline: ReviewBinary, .. }), .. }) =>
+    )
+    .split("\n")
+    .map(StringView::to_owned)
+    .collect()
+  let marker = "        Some({ review: Some({ baseline: ReviewMissing, .. }), .. }) =&gt;"
+  let split = @ldiff.side_by_side_html(old~, new~, context=1, line_cleanup=true)
+  assert_true(
+    split.contains(
+      "<td class=\"ctx\">\{marker}</td><td class=\"ctx\">\{marker}</td>",
+    ),
+  )
+  let unified = @ldiff.unified_html(old~, new~, context=1, line_cleanup=true)
+  assert_true(unified.contains("<span class=\"ctx\"> \{marker}</span>"))
+  assert_false(unified.contains("<span class=\"del\">-\{marker}</span>"))
+  assert_false(unified.contains("<span class=\"add\">+\{marker}</span>"))
+}
+
+///|
 test "both renderers preserve exact core hunk headers for all contexts" {
   let old = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
   let new = ["a", "B", "c", "d", "e", "f", "g", "H", "i", "j"]
