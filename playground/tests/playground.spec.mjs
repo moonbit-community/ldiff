@@ -138,19 +138,35 @@ test("desktop keeps split columns balanced and switches views", async ({ page })
   await expect(page.getByText("example/project@", { exact: false })).toBeVisible();
   await expect(page).toHaveURL(`/#/example/project/commit/${commitSha}`);
   await expect(page.getByLabel("Shareable playground URL")).toHaveValue(page.url());
+  await expect(page.getByRole("link", { name: "Open commit on GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+  await expect(page.locator(".summary-grid, .share-panel")).toHaveCount(0);
 
   const heroLayout = await page.locator(".hero").evaluate(hero => {
     const copy = hero.querySelector(".hero-copy").getBoundingClientRect();
     const controls = hero.querySelector(".hero-controls").getBoundingClientRect();
     return {
+      height: hero.getBoundingClientRect().height,
+      position: getComputedStyle(hero).position,
+      top: getComputedStyle(hero).top,
       copyX: copy.x,
       copyCenterY: copy.y + copy.height / 2,
       controlsX: controls.x,
       controlsCenterY: controls.y + controls.height / 2,
     };
   });
+  expect(heroLayout.height).toBeLessThanOrEqual(56);
+  expect(heroLayout.position).toBe("sticky");
+  expect(heroLayout.top).toBe("0px");
   expect(heroLayout.controlsX).toBeGreaterThan(heroLayout.copyX);
   expect(Math.abs(heroLayout.controlsCenterY - heroLayout.copyCenterY)).toBeLessThan(1);
+
+  const fileHeading = await page.locator(".file-heading").first().evaluate(heading => ({
+    height: heading.getBoundingClientRect().height,
+    position: getComputedStyle(heading).position,
+  }));
+  expect(fileHeading.height).toBeLessThanOrEqual(48);
+  expect(fileHeading.position).toBe("sticky");
 
   const maximumGutterWidth = await page
     .locator("table.split td.line-number")
@@ -169,6 +185,18 @@ test("desktop keeps split columns balanced and switches views", async ({ page })
   expect(Math.abs(splitMetrics.leftWidth - splitMetrics.rightWidth)).toBeLessThanOrEqual(1);
   expect(splitMetrics.leftWidth).toBeGreaterThanOrEqual(splitMetrics.tableWidth * 0.4);
   expect(splitMetrics.rightWidth).toBeGreaterThanOrEqual(splitMetrics.tableWidth * 0.4);
+
+  const changedRowColors = await page.locator("table.split tr").filter({
+    has: page.locator("td.del"),
+  }).first().evaluate(row => ({
+    oldNumber: getComputedStyle(row.querySelector(".old-line-number")).backgroundColor,
+    newNumber: getComputedStyle(row.querySelector(".new-line-number")).backgroundColor,
+    oldCode: getComputedStyle(row.querySelector("td.del")).backgroundColor,
+    newCode: getComputedStyle(row.querySelector("td.add")).backgroundColor,
+  }));
+  expect(changedRowColors.oldNumber).toBe(changedRowColors.oldCode);
+  expect(changedRowColors.newNumber).toBe(changedRowColors.newCode);
+  expect(changedRowColors.oldCode).not.toBe(changedRowColors.newCode);
 
   await page.getByRole("button", { name: "Use unified view" }).click();
   await expect(page.locator("table.unified")).toBeVisible();
@@ -271,11 +299,12 @@ test("narrow viewport scrolls only the diff and keeps controls usable", async ({
   const fileButton = page
     .locator(".file-card")
     .filter({ hasText: "src/format_change.mbt" })
-    .locator("button.secondary.compact");
+    .locator("button.file-toggle");
   await fileButton.click();
   await expect(page.locator(".file-card .diff-scroll")).toHaveCount(0);
-  await expect(fileButton).toHaveText("Expand");
+  await expect(fileButton).toHaveAttribute("aria-expanded", "false");
   await fileButton.click();
+  await expect(fileButton).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator(".file-card .diff-scroll")).toBeVisible();
 
   await page.getByRole("button", { name: "Use unified view" }).click();

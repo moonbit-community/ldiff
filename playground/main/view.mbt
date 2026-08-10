@@ -71,7 +71,7 @@ fn commit_form(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
         on_input=value => emit(InputChanged(value)),
       ),
       @html.button(type_="submit", class="submit-button", [
-        @html.span("View diff"),
+        @html.span(class="submit-label", "View diff"),
         @html.span(class="submit-arrow", "→"),
       ]),
     ]),
@@ -126,36 +126,120 @@ fn hero_view(
   landing : Bool,
   emit : @rabbita.Emit[Msg],
 ) -> @rabbita.Html {
-  @html.header(
-    class=if landing { "hero hero-landing" } else { "hero hero-workspace" },
-    [
+  if landing {
+    @html.header(class="hero hero-landing", [
       @html.div(class="hero-copy", [
         brand_view(),
-        if landing {
-          @html.fragment([
-            @html.p(
-              class="lede",
-              "Review text changes from a public GitHub commit in a fast, focused diff — then share the exact playground URL with anyone.",
-            ),
-            route_example(),
-          ])
-        } else {
-          @html.p(
-            class="workspace-caption",
-            "Public GitHub commits, rendered with ldiff",
-          )
-        },
+        @html.p(
+          class="lede",
+          "Review text changes from a public GitHub commit in a fast, focused diff — then share the exact playground URL with anyone.",
+        ),
+        route_example(),
       ]),
       @html.div(class="hero-controls", [
         @html.div(class="input-panel", commit_form(model, emit)),
-        if landing {
-          landing_details()
-        } else {
-          @html.nothing
-        },
+        landing_details(),
       ]),
-    ],
-  )
+    ])
+  } else {
+    @html.header(class="hero hero-workspace", [
+      @html.div(class="hero-copy", brand_view()),
+      @html.div(class="hero-controls", [
+        @html.div(class="input-panel", commit_form(model, emit)),
+      ]),
+      workspace_actions(model, emit),
+    ])
+  }
+}
+
+///|
+fn copy_button_label(status : CopyStatus) -> String {
+  match status {
+    CopyReady => "Copy link"
+    Copied => "Copied"
+    CopyError(_) => "Try copy again"
+  }
+}
+
+///|
+fn share_control(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
+  match model.share_url {
+    None => @html.nothing
+    Some(url) => {
+      let label = copy_button_label(model.copy_status)
+      @html.fragment([
+        @html.div(class="share-accessibility", [
+          @html.label(for_="share-url", "Shareable playground URL"),
+          @html.input(
+            id="share-url",
+            value=url,
+            read_only=true,
+            class="share-url",
+            attrs=@html.Attrs::build().tabindex(-1),
+          ),
+        ]),
+        @html.button(
+          type_="button",
+          class=if model.copy_status is Copied {
+            "toolbar-button copy-button copied"
+          } else {
+            "toolbar-button copy-button"
+          },
+          title=match model.copy_status {
+            CopyError(message) => "Clipboard access failed: \{message}"
+            _ => label
+          },
+          attrs=@html.Attrs::build().aria_label(label),
+          on_click=emit(CopyShareLink),
+          [
+            @html.span(class="copy-icon", ""),
+            @html.span(class="copy-label", label),
+          ],
+        ),
+      ])
+    }
+  }
+}
+
+///|
+fn workspace_actions(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
+  match model.phase {
+    Showing(commit) => {
+      let view_label = match model.view_mode {
+        Split => "Use unified view"
+        Unified => "Use split view"
+      }
+      @html.nav(
+        class="workspace-actions",
+        attrs=@html.Attrs::build().aria_label("Diff actions"),
+        [
+          @html.a(
+            href=commit.html_url,
+            target=Blank,
+            rel="noopener noreferrer",
+            class="toolbar-button source-button",
+            title="Open commit on GitHub",
+            attrs=@html.Attrs::build().aria_label("Open commit on GitHub"),
+            @html.span(class="source-icon", "↗"),
+          ),
+          @html.span(class="toolbar-divider", ""),
+          @html.button(
+            type_="button",
+            class=match model.view_mode {
+              Split => "toolbar-button view-toggle view-split"
+              Unified => "toolbar-button view-toggle view-unified"
+            },
+            title=view_label,
+            attrs=@html.Attrs::build().aria_label(view_label),
+            on_click=emit(ToggleView),
+            @html.span(class="view-icon", ""),
+          ),
+          share_control(model, emit),
+        ],
+      )
+    }
+    _ => @html.nothing
+  }
 }
 
 ///|
@@ -238,32 +322,31 @@ fn file_card(
   mode : ViewMode,
   emit : @rabbita.Emit[Msg],
 ) -> @rabbita.Html {
+  let toggle_label = if file.expanded { "Collapse" } else { "Expand" }
   @html.article(
     class=if file.expanded { "file-card expanded" } else { "file-card" },
     [
       @html.div(class="file-heading", [
-        @html.div(class="file-identity", [
-          @html.span(
-            class=status_class(file.file.status),
-            status_label(file.file.status),
-          ),
-          @html.code(class="file-path", file_label(file.file)),
-        ]),
+        @html.button(
+          type_="button",
+          class="file-toggle",
+          title="\{toggle_label} \{file_label(file.file)}",
+          attrs=@html.Attrs::build()
+            .aria_expanded(if file.expanded { "true" } else { "false" })
+            .aria_label("\{toggle_label} \{file_label(file.file)}"),
+          on_click=emit(ToggleFile(generation, index)),
+          [
+            @html.span(class="disclosure-icon", ""),
+            @html.span(class=status_class(file.file.status), ""),
+            @html.code(class="file-path", file_label(file.file)),
+          ],
+        ),
         @html.div(class="file-actions", [
+          @html.span(class="status-label", status_label(file.file.status)),
           @html.span(class="file-stats", [
             @html.span(class="additions", "+\{file.file.additions}"),
             @html.span(class="deletions", "−\{file.file.deletions}"),
           ]),
-          @html.button(
-            type_="button",
-            class="secondary compact",
-            on_click=emit(ToggleFile(generation, index)),
-            if file.expanded {
-              "Collapse"
-            } else {
-              "Expand"
-            },
-          ),
         ]),
       ]),
       if file.expanded {
@@ -273,56 +356,6 @@ fn file_card(
       },
     ],
   )
-}
-
-///|
-fn copy_button_label(status : CopyStatus) -> String {
-  match status {
-    CopyReady => "Copy link"
-    Copied => "Copied"
-    CopyError(_) => "Try copy again"
-  }
-}
-
-///|
-fn share_view(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
-  match model.share_url {
-    None => @html.nothing
-    Some(url) =>
-      @html.div(class="share-panel", [
-        @html.div(class="share-copy", [
-          @html.label(for_="share-url", "Shareable playground URL"),
-          @html.p("Anyone with this link can open the same public commit."),
-        ]),
-        @html.div(class="share-row", [
-          @html.input(
-            id="share-url",
-            value=url,
-            read_only=true,
-            class="share-url",
-          ),
-          @html.button(
-            type_="button",
-            class=if model.copy_status is Copied {
-              "copy-button copied"
-            } else {
-              "copy-button"
-            },
-            title=match model.copy_status {
-              CopyError(message) => message
-              _ => "Copy the shareable playground URL"
-            },
-            on_click=emit(CopyShareLink),
-            copy_button_label(model.copy_status),
-          ),
-        ]),
-        match model.copy_status {
-          CopyError(message) =>
-            @html.p(class="copy-error", "Clipboard access failed: \{message}")
-          _ => @html.nothing
-        },
-      ])
-  }
 }
 
 ///|
@@ -356,27 +389,8 @@ fn commit_view(
             },
           ),
         ]),
-        @html.button(
-          type_="button",
-          class="view-toggle",
-          on_click=emit(ToggleView),
-          match model.view_mode {
-            Split => "Use unified view"
-            Unified => "Use split view"
-          },
-        ),
+        @html.pre(class="commit-message", commit.message),
       ]),
-      @html.pre(class="commit-message", commit.message),
-      @html.div(class="summary-grid", [
-        @html.span(class="summary-add", "+\{commit.stats.additions} additions"),
-        @html.span(
-          class="summary-del",
-          "−\{commit.stats.deletions} deletions",
-        ),
-        @html.span("\{commit.total_files} files processed"),
-        @html.span("\{commit.files.length()} changed files shown"),
-      ]),
-      share_view(model, emit),
     ]),
     if commit.files.length() == 0 {
       @html.div(
