@@ -190,103 +190,94 @@ fn prepare_replacement(
   new_lines : ArrayView[DiffLine],
 ) -> Array[ReplacementRow] {
   let rows : Array[ReplacementRow] = []
-  match alignment_tokens(old_lines, new_lines, line => line.text) {
-    None => {
-      for offset, line in old_lines {
-        rows.push({
-          old_html: Some(esc(line.text)),
-          new_html: None,
-          old_offset: Some(offset),
-          new_offset: None,
-        })
-      }
-      for offset, line in new_lines {
-        rows.push({
-          old_html: None,
-          new_html: Some(esc(line.text)),
-          old_offset: None,
-          new_offset: Some(offset),
-        })
+  if alignment_tokens(old_lines, new_lines, line => line.text) is Some(tokens) {
+    let changes = window_changes(tokens.olds, tokens.news)
+    for pair in align(tokens.olds, tokens.news) {
+      match pair {
+        (Some(old_index), Some(new_index)) => {
+          let (old_html, new_html) = if changes is Some(window) {
+            (
+              projected_line_html(
+                tokens.olds[old_index],
+                window.old_changed[old_index],
+                "wd",
+              ),
+              projected_line_html(
+                tokens.news[new_index],
+                window.new_changed[new_index],
+                "wa",
+              ),
+            )
+          } else if !traceback_cells_within_limit(
+              tokens.olds[old_index].length(),
+              tokens.news[new_index].length(),
+            ) {
+            (esc(old_lines[old_index].text), esc(new_lines[new_index].text))
+          } else {
+            pair_row_html(
+              pair_ops(tokens.olds[old_index], tokens.news[new_index]),
+            )
+          }
+          rows.push({
+            old_html: Some(old_html),
+            new_html: Some(new_html),
+            old_offset: Some(old_index),
+            new_offset: Some(new_index),
+          })
+        }
+        (Some(old_index), None) => {
+          let old_html = if changes is Some(window) {
+            projected_line_html(
+              tokens.olds[old_index],
+              window.old_changed[old_index],
+              "wd",
+            )
+          } else {
+            full_line_html(tokens.olds[old_index], "wd")
+          }
+          rows.push({
+            old_html: Some(old_html),
+            new_html: None,
+            old_offset: Some(old_index),
+            new_offset: None,
+          })
+        }
+        (None, Some(new_index)) => {
+          let new_html = if changes is Some(window) {
+            projected_line_html(
+              tokens.news[new_index],
+              window.new_changed[new_index],
+              "wa",
+            )
+          } else {
+            full_line_html(tokens.news[new_index], "wa")
+          }
+          rows.push({
+            old_html: None,
+            new_html: Some(new_html),
+            old_offset: None,
+            new_offset: Some(new_index),
+          })
+        }
+        (None, None) => ()
       }
     }
-    Some(tokens) => {
-      let changes = window_changes(tokens.olds, tokens.news)
-      for pair in align(tokens.olds, tokens.news) {
-        match pair {
-          (Some(old_index), Some(new_index)) => {
-            let (old_html, new_html) = match changes {
-              Some(window) =>
-                (
-                  projected_line_html(
-                    tokens.olds[old_index],
-                    window.old_changed[old_index],
-                    "wd",
-                  ),
-                  projected_line_html(
-                    tokens.news[new_index],
-                    window.new_changed[new_index],
-                    "wa",
-                  ),
-                )
-              None =>
-                if !traceback_cells_within_limit(
-                    tokens.olds[old_index].length(),
-                    tokens.news[new_index].length(),
-                  ) {
-                  (
-                    esc(old_lines[old_index].text),
-                    esc(new_lines[new_index].text),
-                  )
-                } else {
-                  pair_row_html(
-                    pair_ops(tokens.olds[old_index], tokens.news[new_index]),
-                  )
-                }
-            }
-            rows.push({
-              old_html: Some(old_html),
-              new_html: Some(new_html),
-              old_offset: Some(old_index),
-              new_offset: Some(new_index),
-            })
-          }
-          (Some(old_index), None) => {
-            let old_html = match changes {
-              Some(window) =>
-                projected_line_html(
-                  tokens.olds[old_index],
-                  window.old_changed[old_index],
-                  "wd",
-                )
-              None => full_line_html(tokens.olds[old_index], "wd")
-            }
-            rows.push({
-              old_html: Some(old_html),
-              new_html: None,
-              old_offset: Some(old_index),
-              new_offset: None,
-            })
-          }
-          (None, Some(new_index)) => {
-            let new_html = match changes {
-              Some(window) =>
-                projected_line_html(
-                  tokens.news[new_index],
-                  window.new_changed[new_index],
-                  "wa",
-                )
-              None => full_line_html(tokens.news[new_index], "wa")
-            }
-            rows.push({
-              old_html: None,
-              new_html: Some(new_html),
-              old_offset: None,
-              new_offset: Some(new_index),
-            })
-          }
-          (None, None) => ()
-        }
-      }
+  } else {
+    for offset, line in old_lines {
+      rows.push({
+        old_html: Some(esc(line.text)),
+        new_html: None,
+        old_offset: Some(offset),
+        new_offset: None,
+      })
+    }
+    for offset, line in new_lines {
+      rows.push({
+        old_html: None,
+        new_html: Some(esc(line.text)),
+        old_offset: None,
+        new_offset: Some(offset),
+      })
     }
   }
   rows
@@ -294,17 +285,19 @@ fn prepare_replacement(
 
 ///|
 fn line_number_text(number : Int?) -> String {
-  match number {
-    Some(value) => value.to_string()
-    None => ""
+  if number is Some(value) {
+    value.to_string()
+  } else {
+    ""
   }
 }
 
 ///|
 fn hunk_note_at(notes : ArrayView[HunkNote?], hunk_index : Int) -> HunkNote? {
-  match notes.get(hunk_index) {
-    Some(note) => note
-    None => None
+  if notes.get(hunk_index) is Some(note) {
+    note
+  } else {
+    None
   }
 }
 
@@ -350,13 +343,15 @@ fn split_replacement(
   line_numbers : Bool,
 ) -> Unit {
   for prepared in prepare_replacement(old_lines, new_lines) {
-    let (old_html, old_class) = match prepared.old_html {
-      Some(body) => (body, "del")
-      None => ("", "empty")
+    let (old_html, old_class) = if prepared.old_html is Some(body) {
+      (body, "del")
+    } else {
+      ("", "empty")
     }
-    let (new_html, new_class) = match prepared.new_html {
-      Some(body) => (body, "add")
-      None => ("", "empty")
+    let (new_html, new_class) = if prepared.new_html is Some(body) {
+      (body, "add")
+    } else {
+      ("", "empty")
     }
     split_row(
       buf,
@@ -386,9 +381,8 @@ fn append_split_hunk(
     buf <+
       "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
   }
-  match hunk_note_at(hunk_notes, hunk_index) {
-    Some(note) => table_hunk_note(buf, note, if line_numbers { 4 } else { 2 })
-    None => ()
+  if hunk_note_at(hunk_notes, hunk_index) is Some(note) {
+    table_hunk_note(buf, note, if line_numbers { 4 } else { 2 })
   }
   let edits = h.edits()
   let o = h.old_view()
@@ -578,14 +572,12 @@ fn append_unified_hunk(
   } else {
     buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
   }
-  match hunk_note_at(hunk_notes, hunk_index) {
-    Some(note) =>
-      if line_numbers {
-        table_hunk_note(buf, note, 3)
-      } else {
-        pre_hunk_note(buf, note)
-      }
-    None => ()
+  if hunk_note_at(hunk_notes, hunk_index) is Some(note) {
+    if line_numbers {
+      table_hunk_note(buf, note, 3)
+    } else {
+      pre_hunk_note(buf, note)
+    }
   }
   let edits = h.edits()
   let o = h.old_view()
@@ -600,39 +592,35 @@ fn append_unified_hunk(
         let new_lines = n.view(start=new_index, end=new_index + new_len)
         let prepared = prepare_replacement(old_lines, new_lines)
         for row in prepared {
-          match row.old_html {
-            Some(body) =>
-              if line_numbers {
-                unified_numbered_line(
-                  buf,
-                  "del",
-                  "-",
-                  row.old_offset.map(offset => old_index + offset + 1),
-                  None,
-                  body,
-                )
-              } else {
-                unified_text_line(buf, "del", "-", body)
-              }
-            None => ()
+          if row.old_html is Some(body) {
+            if line_numbers {
+              unified_numbered_line(
+                buf,
+                "del",
+                "-",
+                row.old_offset.map(offset => old_index + offset + 1),
+                None,
+                body,
+              )
+            } else {
+              unified_text_line(buf, "del", "-", body)
+            }
           }
         }
         for row in prepared {
-          match row.new_html {
-            Some(body) =>
-              if line_numbers {
-                unified_numbered_line(
-                  buf,
-                  "add",
-                  "+",
-                  None,
-                  row.new_offset.map(offset => new_index + offset + 1),
-                  body,
-                )
-              } else {
-                unified_text_line(buf, "add", "+", body)
-              }
-            None => ()
+          if row.new_html is Some(body) {
+            if line_numbers {
+              unified_numbered_line(
+                buf,
+                "add",
+                "+",
+                None,
+                row.new_offset.map(offset => new_index + offset + 1),
+                body,
+              )
+            } else {
+              unified_text_line(buf, "add", "+", body)
+            }
           }
         }
         i += 2

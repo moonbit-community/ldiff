@@ -280,17 +280,12 @@ fn build_analysis_request(
   let skipped : Array[SkippedFile] = []
   let mut patch_bytes = 0
   for file_index, state in view.files {
-    match blocking_source_problem(state) {
-      Some(message) =>
-        return Err("Could not prepare \{state.file.filename}: \{message}")
-      None => ()
+    if blocking_source_problem(state) is Some(message) {
+      return Err("Could not prepare \{state.file.filename}: \{message}")
     }
-    match non_text_reason(state) {
-      Some(reason) => {
-        skipped.push({ path: state.file.filename, reason })
-        continue
-      }
-      None => ()
+    if non_text_reason(state) is Some(reason) {
+      skipped.push({ path: state.file.filename, reason })
+      continue
     }
     for hunk_index, patch in file_hunks(state) {
       patch_bytes += @utf8.encode(patch).length()
@@ -305,9 +300,10 @@ fn build_analysis_request(
       hunks.push({
         id: "f\{file_index}-h\{hunk_index}",
         path: state.file.filename,
-        previous_path: match state.file.previous_filename {
-          Some(path) => Json::string(path)
-          None => Json::null()
+        previous_path: if state.file.previous_filename is Some(path) {
+          Json::string(path)
+        } else {
+          Json::null()
         },
         status: state.file.status,
         patch,
@@ -320,9 +316,10 @@ fn build_analysis_request(
       owner: view.reference.owner,
       repo: view.reference.repo,
       sha: view.sha,
-      parent_sha: match view.parent_sha {
-        Some(parent) => Json::string(parent)
-        None => Json::null()
+      parent_sha: if view.parent_sha is Some(parent) {
+        Json::string(parent)
+      } else {
+        Json::null()
       },
       message: view.message,
       html_url: view.html_url,

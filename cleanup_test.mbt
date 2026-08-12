@@ -26,16 +26,15 @@ fn count_substring(text : String, needle : String) -> Int {
 ///|
 test "token cleanup highlights the natural repeated-token boundary" {
   let split = @ldiff.side_by_side_html(old=["x x"], new=["x"], context=0)
-  inspect(
+  assert_true(
     split.contains(
       "<td class=\"del\">x <b class=\"wd\">x</b></td><td class=\"add\">x</td>",
     ),
-    content="true",
   )
   let comment = @ldiff.unified_html(old=["// foo foo"], new=["// foo"])
-  inspect(comment.contains("// foo <b class=\"wd\">foo</b>"), content="true")
+  assert_true(comment.contains("// foo <b class=\"wd\">foo</b>"))
   let unicode = @ldiff.side_by_side_html(old=["名 名"], new=["名"])
-  inspect(unicode.contains("名 <b class=\"wd\">名</b>"), content="true")
+  assert_true(unicode.contains("名 <b class=\"wd\">名</b>"))
 }
 
 ///|
@@ -73,26 +72,19 @@ test "line cleanup is opt-in and removes a misleading blank anchor" {
     default_split,
     @ldiff.side_by_side_html(old~, new~, context=0, line_cleanup=false),
   )
-  inspect(
-    count_substring(default_split, "class=\"hunk-header\"") == 2,
-    content="true",
-  )
+  assert_true(count_substring(default_split, "class=\"hunk-header\"") == 2)
   let cleaned = @ldiff.side_by_side_html(
     old~,
     new~,
     context=0,
     line_cleanup=true,
   )
-  inspect(
+  assert_true(
     cleaned.contains(
       "<td class=\"del\">let b = <b class=\"wd\">old</b></td><td class=\"add\">let b = <b class=\"wa\">new</b></td>",
     ),
-    content="true",
   )
-  inspect(
-    count_substring(cleaned, "class=\"hunk-header\"") == 1,
-    content="true",
-  )
+  assert_true(count_substring(cleaned, "class=\"hunk-header\"") == 1)
 }
 
 ///|
@@ -100,17 +92,13 @@ test "re-aligned identical meaningful line is rendered as context" {
   let old = ["let a = old", "same line", "let b = old", "}", "let c = old", "}"]
   let new = ["let a = new", "}", "same line", "let b = new", "let c = new", "}"]
   let split = @ldiff.side_by_side_html(old~, new~, context=1, line_cleanup=true)
-  inspect(
+  assert_true(
     split.contains(
       "<td class=\"ctx\">same line</td><td class=\"ctx\">same line</td>",
     ),
-    content="true",
   )
   let unified = @ldiff.unified_html(old~, new~, context=1, line_cleanup=true)
-  inspect(
-    unified.contains("<span class=\"ctx\"> same line</span>"),
-    content="true",
-  )
+  assert_true(unified.contains("<span class=\"ctx\"> same line</span>"))
 }
 
 ///|
@@ -286,18 +274,16 @@ test "per-pair traceback budget keeps pairing but omits highlights" {
     new=[new_line],
     context=0,
   )
-  inspect(split.contains("<b class="), content="false")
-  inspect(
+  assert_false(split.contains("<b class="))
+  assert_true(
     split.contains(
       "<td class=\"del\">\{old_line}</td><td class=\"add\">\{new_line}</td>",
     ),
-    content="true",
   )
   let unified = @ldiff.unified_html(old=[old_line], new=[new_line], context=0)
-  inspect(unified.contains("<b class="), content="false")
-  inspect(
+  assert_false(unified.contains("<b class="))
+  assert_true(
     unified.find("class=\"del\"").unwrap() <
     unified.find("class=\"add\"").unwrap(),
-    content="true",
   )
 }

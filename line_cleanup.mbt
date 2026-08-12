@@ -171,34 +171,31 @@ fn cleaned_diff_lines(
     covered_through = last
     let (old_start, new_start, _, _) = edit_bounds(edits[first])
     let (_, _, old_end, new_end) = edit_bounds(edits[last])
-    match
-      alignment_tokens(
+    if alignment_tokens(
         old.view(start=old_start, end=old_end),
         new.view(start=new_start, end=new_end),
         line => line,
-      ) {
-      None => () // preserve every original anchor in this window
-      Some(tokens) => {
-        for old_index in old_start..<old_end {
-          old_lines[old_index] = { text: old[old_index], key: (0, old_index) }
-        }
-        for new_index in new_start..<new_end {
-          new_lines[new_index] = { text: new[new_index], key: (1, new_index) }
-        }
-        for pair in align(tokens.olds, tokens.news) {
-          match pair {
-            (Some(old_offset), Some(new_offset)) => {
-              let old_index = old_start + old_offset
-              let new_index = new_start + new_offset
-              if old[old_index] == new[new_index] {
-                let key = (2, next_anchor)
-                old_lines[old_index] = { text: old[old_index], key }
-                new_lines[new_index] = { text: new[new_index], key }
-                next_anchor += 1
-              }
+      )
+      is Some(tokens) {
+      for old_index in old_start..<old_end {
+        old_lines[old_index] = { text: old[old_index], key: (0, old_index) }
+      }
+      for new_index in new_start..<new_end {
+        new_lines[new_index] = { text: new[new_index], key: (1, new_index) }
+      }
+      for pair in align(tokens.olds, tokens.news) {
+        match pair {
+          (Some(old_offset), Some(new_offset)) => {
+            let old_index = old_start + old_offset
+            let new_index = new_start + new_offset
+            if old[old_index] == new[new_index] {
+              let key = (2, next_anchor)
+              old_lines[old_index] = { text: old[old_index], key }
+              new_lines[new_index] = { text: new[new_index], key }
+              next_anchor += 1
             }
-            _ => ()
           }
+          _ => ()
         }
       }
     }

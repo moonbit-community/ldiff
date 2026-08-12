@@ -60,9 +60,10 @@ fn wdist(a : ArrayView[Tok], b : ArrayView[Tok]) -> Int {
       let del = prev[j] + alignment_weight(a[i - 1])
       let ins = cur[j - 1] + alignment_weight(b[j - 1])
       let mut best = if del < ins { del } else { ins }
-      match subst_cost(a[i - 1], b[j - 1]) {
-        Some(c) => if prev[j - 1] + c < best { best = prev[j - 1] + c }
-        None => ()
+      if subst_cost(a[i - 1], b[j - 1]) is Some(c) {
+        if prev[j - 1] + c < best {
+          best = prev[j - 1] + c
+        }
       }
       cur[j] = best
     }
@@ -367,14 +368,14 @@ fn window_stream(lines : ArrayView[Array[Tok]]) -> WindowStream {
   for line_index, tokens in lines {
     for token_index, token in tokens {
       if token.kind is Space {
-        gap = gap + token.text
+        gap += token.text
       } else {
         atoms.push({ token, line: line_index, token_index, gap_before: gap })
         gap = ""
       }
     }
     if line_index + 1 < lines.length() {
-      gap = gap + "\n"
+      gap += "\n"
     }
   }
   { atoms, trailing_gap: gap }
@@ -857,39 +858,35 @@ fn pair_trace(a : WindowStream, b : WindowStream, mode : PairMode) -> PairTrace 
               state,
               1,
             )
-          } else {
-            match subst_cost(a.atoms[i - 1].token, b.atoms[j - 1].token) {
-              Some(cost) => {
-                let changed = pair_changed_score(
-                  diagonal_source,
-                  state,
-                  a.atoms,
-                  b.atoms,
-                  a.trailing_gap,
-                  b.trailing_gap,
-                  mode,
-                  i - 1,
-                  j - 1,
-                  cost,
-                )
-                let candidate = {
-                  ..changed,
-                  gap: changed.gap +
-                  pair_diagonal_gap_score(mode, a.atoms, b.atoms, i - 1, j - 1),
-                }
-                let next_state = pair_changed_state(state, true, true)
-                pair_consider(
-                  cur,
-                  pair_row_index(j, next_state),
-                  backpointers,
-                  pair_backpointer_index(i, j, width, next_state),
-                  candidate,
-                  state,
-                  1,
-                )
-              }
-              None => ()
+          } else if subst_cost(a.atoms[i - 1].token, b.atoms[j - 1].token)
+            is Some(cost) {
+            let changed = pair_changed_score(
+              diagonal_source,
+              state,
+              a.atoms,
+              b.atoms,
+              a.trailing_gap,
+              b.trailing_gap,
+              mode,
+              i - 1,
+              j - 1,
+              cost,
+            )
+            let candidate = {
+              ..changed,
+              gap: changed.gap +
+              pair_diagonal_gap_score(mode, a.atoms, b.atoms, i - 1, j - 1),
             }
+            let next_state = pair_changed_state(state, true, true)
+            pair_consider(
+              cur,
+              pair_row_index(j, next_state),
+              backpointers,
+              pair_backpointer_index(i, j, width, next_state),
+              candidate,
+              state,
+              1,
+            )
           }
         }
       }

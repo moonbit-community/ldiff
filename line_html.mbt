@@ -85,9 +85,8 @@ fn append_split_line_hunk(
     buf <+
       "<tr><td class=\"hunk-header\" colspan=\"2\">\{esc(h.header())}</td></tr>\n"
   }
-  match hunk_note_at(hunk_notes, hunk_index) {
-    Some(note) => table_hunk_note(buf, note, if line_numbers { 4 } else { 2 })
-    None => ()
+  if hunk_note_at(hunk_notes, hunk_index) is Some(note) {
+    table_hunk_note(buf, note, if line_numbers { 4 } else { 2 })
   }
   let edits = h.edits()
   let old_view = h.old_view()
@@ -225,14 +224,12 @@ fn append_unified_line_hunk(
   } else {
     buf <+ "<span class=\"hunk-header\">\{esc(h.header())}</span>\n"
   }
-  match hunk_note_at(hunk_notes, hunk_index) {
-    Some(note) =>
-      if line_numbers {
-        table_hunk_note(buf, note, 3)
-      } else {
-        pre_hunk_note(buf, note)
-      }
-    None => ()
+  if hunk_note_at(hunk_notes, hunk_index) is Some(note) {
+    if line_numbers {
+      table_hunk_note(buf, note, 3)
+    } else {
+      pre_hunk_note(buf, note)
+    }
   }
   let old_view = h.old_view()
   let new_view = h.new_view()

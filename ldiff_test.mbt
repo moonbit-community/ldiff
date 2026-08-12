@@ -34,37 +34,28 @@ test "tokenizer is faithful and language-aware" {
 ///|
 test "similarity: comments help but cannot veto" {
   // similar comments pair; unrelated comments do not
-  inspect(
-    @ldiff.similarity("// add tax", "// add the tax") > 400,
-    content="true",
-  )
-  inspect(
+  assert_true(@ldiff.similarity("// add tax", "// add the tax") > 400)
+  assert_true(
     @ldiff.similarity("// promoted; output is not", "// another topic entirely") <
     400,
-    content="true",
   )
   // code identical, comment rewritten: still a strong pair
-  inspect(
-    @ldiff.similarity("let x = 1 // sum", "let x = 1 // total") > 900,
-    content="true",
-  )
+  assert_true(@ldiff.similarity("let x = 1 // sum", "let x = 1 // total") > 900)
   // identical comment beats a rewritten one (tie-breaker)
-  inspect(
+  assert_true(
     @ldiff.similarity("let x = 1 // a", "let x = 1 // a") >
     @ldiff.similarity("let x = 1 // a", "let x = 1 // b"),
-    content="true",
   )
   // lines with nothing in common stay under the threshold
-  inspect(
+  assert_true(
     @ldiff.similarity("alpha beta gamma delta eps", "one two three four five") <
     400,
-    content="true",
   )
   // respacing barely matters
-  inspect(@ldiff.similarity("f(a,b)", "f( a , b )") > 800, content="true")
+  assert_true(@ldiff.similarity("f(a,b)", "f( a , b )") > 800)
   // zero-mass lines pair only when identical
-  inspect(@ldiff.similarity("//", "") == 0, content="true")
-  inspect(@ldiff.similarity("//", "//") == 1000, content="true")
+  assert_true(@ldiff.similarity("//", "") == 0)
+  assert_true(@ldiff.similarity("//", "//") == 1000)
 }
 
 ///|
@@ -79,21 +70,20 @@ test "split view: alignment, highlights, escaping" {
     ][:]
   let html = @ldiff.side_by_side_html(old~, new~, context=1)
   // paired rows carry word-level highlights
-  inspect(html.contains("<b class=\"wa\">"), content="true")
+  assert_true(html.contains("<b class=\"wa\">"))
   // the unrelated comment line remains an unpaired deletion; the accepted
   // window projection may now emphasize its deleted semantic content
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"del\">  <b class=\"wd\">// helper detail</b></td><td class=\"empty\">",
     ),
-    content="true",
   )
   // escaping
   let esc_html = @ldiff.side_by_side_html(old=["if a < b && c > d {"], new=[
     "if a <= b && c > d {",
   ])
-  inspect(esc_html.contains("&lt;"), content="true")
-  inspect(esc_html.contains("<b class=\"wa\">"), content="true")
+  assert_true(esc_html.contains("&lt;"))
+  assert_true(esc_html.contains("<b class=\"wa\">"))
 }
 
 ///|
@@ -105,44 +95,36 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
     new=[new_indent],
     context=0,
   )
-  inspect(
+  assert_true(
     split.contains(
       "<td class=\"del\">\{old_indent}</td><td class=\"add\">\{new_indent}</td>",
     ),
-    content="true",
   )
-  inspect(split.contains("<b class="), content="false")
+  assert_false(split.contains("<b class="))
   let unified = @ldiff.unified_html(
     old=[old_indent],
     new=[new_indent],
     context=0,
   )
-  inspect(
-    unified.contains("<span class=\"del\">-\{old_indent}</span>"),
-    content="true",
-  )
-  inspect(
-    unified.contains("<span class=\"add\">+\{new_indent}</span>"),
-    content="true",
-  )
-  inspect(unified.contains("<b class="), content="false")
+  assert_true(unified.contains("<span class=\"del\">-\{old_indent}</span>"))
+  assert_true(unified.contains("<span class=\"add\">+\{new_indent}</span>"))
+  assert_false(unified.contains("<b class="))
 
   let mixed = @ldiff.side_by_side_html(
     old=["  let old = 1"],
     new=["    let new = 1"],
     context=0,
   )
-  inspect(
+  assert_true(
     mixed.contains(
       "<td class=\"del\">  let <b class=\"wd\">old</b> = 1</td><td class=\"add\">    let <b class=\"wa\">new</b> = 1</td>",
     ),
-    content="true",
   )
 
   for pair in [("f( x)", "f(x)"), ("f(x)", "f( x)")] {
     let (old, new) = pair
     let spacing = @ldiff.side_by_side_html(old=[old], new=[new], context=0)
-    inspect(spacing.contains("<b class="), content="false")
+    assert_false(spacing.contains("<b class="))
   }
 
   let phrase = @ldiff.side_by_side_html(
@@ -150,7 +132,7 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
     new=["pub fn f(a : Int)"],
     context=0,
   )
-  inspect(phrase.contains("<b class=\"wa\">a : Int</b>"), content="true")
+  assert_true(phrase.contains("<b class=\"wa\">a : Int</b>"))
 }
 
 ///|
@@ -160,22 +142,20 @@ test "semantic highlights exclude boundary whitespace in both HTML views" {
     new=["count + tax"],
     context=0,
   )
-  inspect(
+  assert_true(
     count_split.contains(
       "<td class=\"del\">count</td><td class=\"add\">count <b class=\"wa\">+ tax</b></td>",
     ),
-    content="true",
   )
   let count_unified = @ldiff.unified_html(
     old=["count"],
     new=["count + tax"],
     context=0,
   )
-  inspect(
+  assert_true(
     count_unified.contains(
       "<span class=\"add\">+count <b class=\"wa\">+ tax</b></span>",
     ),
-    content="true",
   )
 
   let parameter_split = @ldiff.side_by_side_html(
@@ -183,22 +163,20 @@ test "semantic highlights exclude boundary whitespace in both HTML views" {
     new=["f( a : Int )"],
     context=0,
   )
-  inspect(
+  assert_true(
     parameter_split.contains(
       "<td class=\"del\">f()</td><td class=\"add\">f( <b class=\"wa\">a : Int</b> )</td>",
     ),
-    content="true",
   )
   let parameter_unified = @ldiff.unified_html(
     old=["f()"],
     new=["f( a : Int )"],
     context=0,
   )
-  inspect(
+  assert_true(
     parameter_unified.contains(
       "<span class=\"add\">+f( <b class=\"wa\">a : Int</b> )</span>",
     ),
-    content="true",
   )
 }
 
@@ -208,7 +186,7 @@ test "budget fallbacks render plain rows" {
   let big_old = "word ".repeat(600) + "same tail here"
   let big_new = "word ".repeat(600) + "same tail CHANGED"
   let html = @ldiff.side_by_side_html(old=[big_old], new=[big_new])
-  inspect(html.contains("<b class="), content="false")
+  assert_false(html.contains("<b class="))
   // total cell budget
   let old_lines : Array[String] = []
   let new_lines : Array[String] = []
@@ -218,7 +196,7 @@ test "budget fallbacks render plain rows" {
     new_lines.push(base + " tail")
   }
   let html2 = @ldiff.side_by_side_html(old=old_lines, new=new_lines)
-  inspect(html2.contains("<b class="), content="false")
+  assert_false(html2.contains("<b class="))
 }
 
 ///|
@@ -254,18 +232,17 @@ test "classification matrix" {
 
 ///|
 test "zero-mass variants" {
-  inspect(@ldiff.similarity("//", "//   ") == 0, content="true")
-  inspect(@ldiff.similarity("", "") == 1000, content="true")
+  assert_true(@ldiff.similarity("//", "//   ") == 0)
+  assert_true(@ldiff.similarity("", "") == 1000)
 }
 
 ///|
 test "comment line does not pair with a declaration" {
-  inspect(
+  assert_true(
     @ldiff.similarity(
       "// promoted; `output` is not (use the trait or string interpolation).", "pub extend DiffAlgorithm with Eq::{equal}",
     ) <
     400,
-    content="true",
   )
 }
 
@@ -274,8 +251,8 @@ test "split view: blank-but-present vs absent cells" {
   let html = @ldiff.side_by_side_html(old=["foo(1)", "", "bar(2)"], new=[
     "foo(9)", "zzz qqq www",
   ])
-  inspect(html.contains("<td class=\"del\"></td>"), content="true")
-  inspect(html.contains("<td class=\"empty\"></td>"), content="true")
+  assert_true(html.contains("<td class=\"del\"></td>"))
+  assert_true(html.contains("<td class=\"empty\"></td>"))
 }
 
 ///|
@@ -284,11 +261,11 @@ test "unified view mirrors the split alignment" {
   let new = ["let sum = a + b // sum", "other_entirely stuff"][:]
   let html = @ldiff.unified_html(old~, new~, context=0)
   // paired replacement: highlighted rename, deletions before insertions
-  inspect(html.contains("<b class=\"wd\">total</b>"), content="true")
-  inspect(html.contains("<b class=\"wa\">sum</b>"), content="true")
+  assert_true(html.contains("<b class=\"wd\">total</b>"))
+  assert_true(html.contains("<b class=\"wa\">sum</b>"))
   let del_idx = html.find("class=\"del\"").unwrap()
   let add_idx = html.find("class=\"add\"").unwrap()
-  inspect(del_idx < add_idx, content="true")
+  assert_true(del_idx < add_idx)
 }
 
 ///|
@@ -314,32 +291,28 @@ test "numbered split has four columns and complete old and new positions" {
     line_cleanup=true,
     line_numbers=true,
   )
-  inspect(html.contains("class=\"hunk-header\" colspan=\"4\""), content="true")
-  inspect(
+  assert_true(html.contains("class=\"hunk-header\" colspan=\"4\""))
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\">1</td><td class=\"ctx\">ctx</td><td class=\"line-number new-line-number\">1</td><td class=\"ctx\">ctx</td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\">2</td><td class=\"del\"><b class=\"wd\">old &lt;tag&gt;</b></td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\">3</td><td class=\"del\"></td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number new-line-number\">3</td><td class=\"add\"><b class=\"wa\">inserted</b></td>",
     ),
-    content="true",
   )
-  inspect(html.contains("<b class=\"wa\">new &amp; value</b>"), content="true")
+  assert_true(html.contains("<b class=\"wa\">new &amp; value</b>"))
 }
 
 ///|
@@ -353,31 +326,27 @@ test "numbered unified has three columns across replacements and multiple hunks"
     line_cleanup=true,
     line_numbers=true,
   )
-  inspect(html.has_prefix("<table class=\"unified numbered\">"), content="true")
-  inspect(html.contains("class=\"hunk-header\" colspan=\"3\""), content="true")
-  inspect(
+  assert_true(html.has_prefix("<table class=\"unified numbered\">"))
+  assert_true(html.contains("class=\"hunk-header\" colspan=\"3\""))
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-<b class=\"wd\">old</b></td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">2</td><td class=\"add\">+<b class=\"wa\">new</b></td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\">8</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-<b class=\"wd\">gone</b></td>",
     ),
-    content="true",
   )
-  inspect(
+  assert_true(
     html.contains(
       "<td class=\"line-number old-line-number\"></td><td class=\"line-number new-line-number\">8</td><td class=\"add\">+<b class=\"wa\">added</b></td>",
     ),
-    content="true",
   )
 }
 
@@ -405,10 +374,9 @@ test "numbered pure add and delete use an empty number cell for the absent side"
     context=0,
     line_numbers=true,
   )
-  inspect(
+  assert_true(
     deleted.contains(
       "<td class=\"line-number old-line-number\">2</td><td class=\"line-number new-line-number\"></td><td class=\"del\">-</td>",
     ),
-    content="true",
   )
 }

@@ -163,41 +163,40 @@ fn copy_button_label(status : CopyStatus) -> String {
 
 ///|
 fn share_control(model : Model, emit : @rabbita.Emit[Msg]) -> @rabbita.Html {
-  match model.share_url {
-    None => @html.nothing
-    Some(url) => {
-      let label = copy_button_label(model.copy_status)
-      @html.fragment([
-        @html.div(class="share-accessibility", [
-          @html.label(for_="share-url", "Shareable playground URL"),
-          @html.input(
-            id="share-url",
-            value=url,
-            read_only=true,
-            class="share-url",
-            attrs=@html.Attrs::build().tabindex(-1),
-          ),
-        ]),
-        @html.button(
-          type_="button",
-          class=if model.copy_status is Copied {
-            "toolbar-button copy-button copied"
-          } else {
-            "toolbar-button copy-button"
-          },
-          title=match model.copy_status {
-            CopyError(message) => "Clipboard access failed: \{message}"
-            _ => label
-          },
-          attrs=@html.Attrs::build().aria_label(label),
-          on_click=emit(CopyShareLink),
-          [
-            @html.span(class="copy-icon", ""),
-            @html.span(class="copy-label", label),
-          ],
+  if model.share_url is Some(url) {
+    let label = copy_button_label(model.copy_status)
+    @html.fragment([
+      @html.div(class="share-accessibility", [
+        @html.label(for_="share-url", "Shareable playground URL"),
+        @html.input(
+          id="share-url",
+          value=url,
+          read_only=true,
+          class="share-url",
+          attrs=@html.Attrs::build().tabindex(-1),
         ),
-      ])
-    }
+      ]),
+      @html.button(
+        type_="button",
+        class=if model.copy_status is Copied {
+          "toolbar-button copy-button copied"
+        } else {
+          "toolbar-button copy-button"
+        },
+        title=match model.copy_status {
+          CopyError(message) => "Clipboard access failed: \{message}"
+          _ => label
+        },
+        attrs=@html.Attrs::build().aria_label(label),
+        on_click=emit(CopyShareLink),
+        [
+          @html.span(class="copy-icon", ""),
+          @html.span(class="copy-label", label),
+        ],
+      ),
+    ])
+  } else {
+    @html.nothing
   }
 }
 
@@ -274,9 +273,10 @@ fn file_diff_view(
   mode : ViewMode,
   emit : @rabbita.Emit[Msg],
 ) -> @rabbita.Html {
-  let problem = match source_problem(file.old_side) {
-    Some(message) => Some(message)
-    None => source_problem(file.new_side)
+  let problem = if source_problem(file.old_side) is Some(message) {
+    Some(message)
+  } else {
+    source_problem(file.new_side)
   }
   if problem is Some(message) {
     let retry = file.old_side is LoadFailed(_) || file.new_side is LoadFailed(_)
@@ -514,30 +514,29 @@ fn analysis_hunk_view(
   hunk : AnalyzedHunk,
   rendered : Map[String, RenderedAnalysisHunk],
 ) -> @rabbita.Html {
-  match rendered.get(hunk.id) {
-    Some(item) =>
-      @html.article(class="analysis-hunk", [
-        @html.div(class="analysis-hunk-heading", [
-          @html.div(class="analysis-hunk-file", [
-            @html.span(class=status_class(item.file.file.status), ""),
-            @html.code(class="file-path", file_label(item.file.file)),
-          ]),
-          @html.span(class="status-label", status_label(item.file.file.status)),
+  if rendered.get(hunk.id) is Some(item) {
+    @html.article(class="analysis-hunk", [
+      @html.div(class="analysis-hunk-heading", [
+        @html.div(class="analysis-hunk-file", [
+          @html.span(class=status_class(item.file.file.status), ""),
+          @html.code(class="file-path", file_label(item.file.file)),
         ]),
-        // ldiff escapes source text, hunk headers, group titles, and hunk
-        // explanations before this raw HTML reaches the application.
-        @html.div(
-          class="diff-scroll",
-          attrs=@html.Attrs::build().inner_html(item.html),
-          ([] : Array[@rabbita.Html]),
-        ),
-      ])
-    None =>
-      @html.article(class="analysis-hunk analysis-hunk-error", [
-        @html.p(
-          "The analysis referenced \{hunk.id}, but that diff hunk could not be rendered.",
-        ),
-      ])
+        @html.span(class="status-label", status_label(item.file.file.status)),
+      ]),
+      // ldiff escapes source text, hunk headers, group titles, and hunk
+      // explanations before this raw HTML reaches the application.
+      @html.div(
+        class="diff-scroll",
+        attrs=@html.Attrs::build().inner_html(item.html),
+        ([] : Array[@rabbita.Html]),
+      ),
+    ])
+  } else {
+    @html.article(class="analysis-hunk analysis-hunk-error", [
+      @html.p(
+        "The analysis referenced \{hunk.id}, but that diff hunk could not be rendered.",
+      ),
+    ])
   }
 }
 
@@ -688,9 +687,10 @@ fn commit_view(
           ),
           @html.p(
             class="parent",
-            match commit.parent_sha {
-              Some(parent) => "Compared with first parent \{parent}."
-              None => "Root commit; compared with an empty tree."
+            if commit.parent_sha is Some(parent) {
+              "Compared with first parent \{parent}."
+            } else {
+              "Root commit; compared with an empty tree."
             },
           ),
         ]),

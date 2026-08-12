@@ -154,9 +154,14 @@ fn source_request(
 
 ///|
 fn initial_side(url : String?, expanded : Bool) -> SideLoad {
-  match url {
-    None => Ready([])
-    Some(_) => if expanded { Loading } else { NotRequested }
+  if url is Some(_) {
+    if expanded {
+      Loading
+    } else {
+      NotRequested
+    }
+  } else {
+    Ready([])
   }
 }
 
@@ -414,18 +419,14 @@ fn continue_analysis(
     return (model, @rabbita.none)
   }
   for file in view.files {
-    match blocking_source_problem(file) {
-      Some(message) =>
-        return (
-          with_analysis_status(
-            model,
-            AnalysisFailed(
-              "Could not prepare \{file.file.filename}: \{message}",
-            ),
-          ),
-          @rabbita.none,
-        )
-      None => ()
+    if blocking_source_problem(file) is Some(message) {
+      return (
+        with_analysis_status(
+          model,
+          AnalysisFailed("Could not prepare \{file.file.filename}: \{message}"),
+        ),
+        @rabbita.none,
+      )
     }
   }
   if sources_pending(view) {
@@ -551,15 +552,15 @@ fn update(
           }
       }
     CopyShareLink =>
-      match model.share_url {
-        None => (model, @rabbita.none)
-        Some(url) =>
-          (
-            model,
-            @clipboard.copy(Text(url), copied=emit(ShareCopied), failed=message => {
-              emit(ShareCopyFailed(message))
-            }),
-          )
+      if model.share_url is Some(url) {
+        (
+          model,
+          @clipboard.copy(Text(url), copied=emit(ShareCopied), failed=message => {
+            emit(ShareCopyFailed(message))
+          }),
+        )
+      } else {
+        (model, @rabbita.none)
       }
     ShareCopied =>
       (
@@ -630,19 +631,18 @@ fn update(
     ToggleAnalysisGroup(index) =>
       match model.analysis_status {
         AnalysisDone(result, skipped, expanded) =>
-          match expanded.get(index) {
-            Some(is_expanded) => {
-              let changed = expanded.copy()
-              changed[index] = !is_expanded
-              (
-                with_analysis_status(
-                  model,
-                  AnalysisDone(result, skipped, changed),
-                ),
-                @rabbita.none,
-              )
-            }
-            None => (model, @rabbita.none)
+          if expanded.get(index) is Some(is_expanded) {
+            let changed = expanded.copy()
+            changed[index] = !is_expanded
+            (
+              with_analysis_status(
+                model,
+                AnalysisDone(result, skipped, changed),
+              ),
+              @rabbita.none,
+            )
+          } else {
+            (model, @rabbita.none)
           }
         _ => (model, @rabbita.none)
       }
