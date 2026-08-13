@@ -6,6 +6,8 @@ import {
 
 import {
   "moonbitlang/core/debug",
+  "moonbit-community/ldiff/html" @ldiff_html,
+  "moonbit-community/ldiff/text" @ldiff_text,
 } for "test"
 
 import {

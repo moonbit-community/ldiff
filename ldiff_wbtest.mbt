@@ -42,7 +42,7 @@ test "unrelated block orders delete before insert" {
 test "comma carries less alignment evidence than structural punctuation" {
   let comma = Tok::{ kind: Punct, text: "," }
   let close = Tok::{ kind: Punct, text: ")" }
-  assert_eq(weight(Punct), 6)
+  assert_eq(Punct.weight(), 6)
   assert_eq(alignment_weight(comma), 1)
   assert_eq(alignment_weight(close), 6)
   assert_true(similarity("old,", "new,") < THETA)
@@ -138,67 +138,86 @@ test "fallback tokens still feed the existing alignment budgets" {
 }
 
 ///|
-test "pair renderer trims whitespace tokens at every changed-run boundary" {
+fn diff_segment_signature(segments : ArrayView[DiffSegment]) -> String {
+  let buf = StringBuilder::new()
+  for segment in segments {
+    match segment.kind {
+      Unchanged => buf <+ "U[\{segment.text}]"
+      Changed => buf <+ "C[\{segment.text}]"
+    }
+  }
+  buf.to_string()
+}
+
+///|
+test "pair calculation trims whitespace at every changed-run boundary" {
   let space = Tok::{ kind: Space, text: " " }
   let old = Tok::{ kind: Word, text: "old" }
   let new = Tok::{ kind: Word, text: "new" }
-  let (both_left, both_right) = pair_row_html([
+  let (both_left, both_right) = pair_row_segments([
     OSub(space, space),
     OSub(old, new),
     OSub(space, space),
   ])
-  assert_eq(both_left, " <b class=\"wd\">old</b> ")
-  assert_eq(both_right, " <b class=\"wa\">new</b> ")
+  assert_eq(diff_segment_signature(both_left), "U[ ]C[old]U[ ]")
+  assert_eq(diff_segment_signature(both_right), "U[ ]C[new]U[ ]")
 
-  let (before, _) = pair_row_html([ODel(space), ODel(old)])
-  assert_eq(before, " <b class=\"wd\">old</b>")
-  let (after, _) = pair_row_html([ODel(old), ODel(space)])
-  assert_eq(after, "<b class=\"wd\">old</b> ")
+  let (before, _) = pair_row_segments([ODel(space), ODel(old)])
+  assert_eq(diff_segment_signature(before), "U[ ]C[old]")
+  let (after, _) = pair_row_segments([ODel(old), ODel(space)])
+  assert_eq(diff_segment_signature(after), "C[old]U[ ]")
 }
 
 ///|
-test "pair renderer uses token text and trims each side independently" {
-  let (left, right) = pair_row_html([
+test "pair calculation uses token text and trims each side independently" {
+  let (left, right) = pair_row_segments([
     OSub({ kind: Filler, text: "\t" }, { kind: Word, text: "new" }),
     OSub({ kind: Word, text: "old" }, { kind: Filler, text: " " }),
   ])
-  assert_eq(left, "\t<b class=\"wd\">old</b>")
-  assert_eq(right, "<b class=\"wa\">new</b> ")
+  assert_eq(diff_segment_signature(left), "U[\t]C[old]")
+  assert_eq(diff_segment_signature(right), "C[new]U[ ]")
 
-  let (_, internal) = pair_row_html([
+  let (_, internal) = pair_row_segments([
     OIns({ kind: Word, text: "a" }),
     OIns({ kind: Space, text: " " }),
     OIns({ kind: Punct, text: ":" }),
     OIns({ kind: Filler, text: " " }),
     OIns({ kind: Word, text: "Int" }),
   ])
-  assert_eq(internal, "<b class=\"wa\">a : Int</b>")
+  assert_eq(diff_segment_signature(internal), "C[a : Int]")
 
-  let (plain, _) = pair_row_html([
+  let (plain, _) = pair_row_segments([
     ODel({ kind: Space, text: " " }),
     ODel({ kind: Filler, text: "\t" }),
   ])
-  assert_eq(plain, " \t")
+  assert_eq(diff_segment_signature(plain), "U[ \t]")
 
-  let (_, comment) = pair_row_html([
+  let (_, comment) = pair_row_segments([
     OIns({ kind: Filler, text: "//" }),
     OIns({ kind: Filler, text: " " }),
     OIns({ kind: Comment, text: "word" }),
     OIns({ kind: Filler, text: " " }),
   ])
-  assert_eq(comment, "<b class=\"wa\">// word</b> ")
+  assert_eq(diff_segment_signature(comment), "C[// word]U[ ]")
 }
 
 ///|
-test "full-line renderer trims whitespace escapes content and skips empty emphasis" {
+test "full-line calculation trims whitespace and skips empty emphasis" {
   assert_eq(
-    full_line_html(tokenize_line(" \t<old & gone>  "), "wd"),
-    " \t<b class=\"wd\">&lt;old &amp; gone&gt;</b>  ",
+    diff_segment_signature(
+      full_line_segments(tokenize_line(" \t<old & gone>  ")),
+    ),
+    "U[ \t]C[<old & gone>]U[  ]",
   )
   assert_eq(
-    full_line_html(tokenize_line("\tnew & <value> "), "wa"),
-    "\t<b class=\"wa\">new &amp; &lt;value&gt;</b> ",
+    diff_segment_signature(
+      full_line_segments(tokenize_line("\tnew & <value> ")),
+    ),
+    "U[\t]C[new & <value>]U[ ]",
   )
-  assert_eq(full_line_html(tokenize_line(" \t  "), "wd"), " \t  ")
-  assert_eq(full_line_html(tokenize_line(""), "wa"), "")
+  assert_eq(
+    diff_segment_signature(full_line_segments(tokenize_line(" \t  "))),
+    "U[ \t  ]",
+  )
+  assert_eq(diff_segment_signature(full_line_segments(tokenize_line(""))), "")
 }

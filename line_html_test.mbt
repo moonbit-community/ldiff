@@ -14,7 +14,7 @@
 
 ///|
 test "plain split pairs replacement lines by position and leaves extras empty" {
-  let fewer_new = @ldiff.side_by_side_line_html(
+  let fewer_new = @ldiff_html.side_by_side_line_html(
     old=["old <one>", "old two"],
     new=["new & one"],
     context=0,
@@ -31,7 +31,7 @@ test "plain split pairs replacement lines by position and leaves extras empty" {
     ),
   )
 
-  let fewer_old = @ldiff.side_by_side_line_html(
+  let fewer_old = @ldiff_html.side_by_side_line_html(
     old=["old"],
     new=["new one", "new two"],
     context=0,
@@ -51,7 +51,7 @@ test "plain split pairs replacement lines by position and leaves extras empty" {
 test "plain split preserves requested context and absolute line numbers" {
   let old = ["0", "old", "2", "3", "4", "5", "6", "gone", "8"]
   let new = ["0", "new", "2", "3", "4", "5", "6", "added", "8"]
-  let html = @ldiff.side_by_side_line_html(
+  let html = @ldiff_html.side_by_side_line_html(
     old~,
     new~,
     context=1,
@@ -73,7 +73,7 @@ test "plain split preserves requested context and absolute line numbers" {
 
 ///|
 test "plain unified emits deletions before insertions without token markup" {
-  let html = @ldiff.unified_line_html(
+  let html = @ldiff_html.unified_line_html(
     old=["before", "old <one>", "old two", "after"],
     new=["before", "new & one", "new two", "new three", "after"],
     context=1,
@@ -99,7 +99,7 @@ test "plain unified emits deletions before insertions without token markup" {
 ///|
 test "plain unified keeps the historical unnumbered wrapper" {
   inspect(
-    @ldiff.unified_line_html(old=["<old>"], new=["&new"], context=0),
+    @ldiff_html.unified_line_html(old=["<old>"], new=["&new"], context=0),
     content=(
       #|<pre class="unified">
       #|<span class="hunk-header">@@ -1 +1 @@</span>

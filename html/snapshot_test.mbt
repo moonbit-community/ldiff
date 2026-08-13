@@ -26,9 +26,9 @@ test "basic" (t : @test.Test) {
     ][:]
   let body = StringBuilder::new()
   body <+ "<h3>Split view</h3>\n"
-  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "\{@html.side_by_side_html(old~, new~)}"
   body <+ "<h3>Unified view</h3>\n"
-  body <+ "\{@ldiff.unified_html(old~, new~)}"
+  body <+ "\{@html.unified_html(old~, new~)}"
   // attributes, Unicode comments, HTML-special characters
   let sp_old = [
       "#deprecated(\"use `f` instead\")", "fn g(a : Int) -> Int { a < 3 && a > 0 } // 判断范围",
@@ -37,8 +37,8 @@ test "basic" (t : @test.Test) {
       "#deprecated(\"use `h` instead\")", "fn g(a : Int) -> Bool { a <= 3 && a > 0 } // 判断闭区间",
     ][:]
   body <+ "<h3>Attributes, Unicode, HTML-specials</h3>\n"
-  body <+ "\{@ldiff.side_by_side_html(old=sp_old, new=sp_new)}"
-  t.write(@ldiff.html_page(title="ldiff basic", body.to_string()))
+  body <+ "\{@html.side_by_side_html(old=sp_old, new=sp_new)}"
+  t.write(@html.html_page(title="ldiff basic", body.to_string()))
   t.snapshot(filename="basic.html")
 }
 
@@ -56,10 +56,10 @@ test "left leaning insert" (t : @test.Test) {
     ][:]
   let body = StringBuilder::new()
   body <+ "<h3>Split view</h3>\n"
-  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "\{@html.side_by_side_html(old~, new~)}"
   body <+ "<h3>Unified view</h3>\n"
-  body <+ "\{@ldiff.unified_html(old~, new~)}"
-  t.write(@ldiff.html_page(title="left leaning insert", body.to_string()))
+  body <+ "\{@html.unified_html(old~, new~)}"
+  t.write(@html.html_page(title="left leaning insert", body.to_string()))
   t.snapshot(filename="left_leaning_insert.html")
 }
 
@@ -78,11 +78,11 @@ test "html fallback resource path" (t : @test.Test) {
     ][:]
   let body = StringBuilder::new()
   body <+ "<h3>Split view</h3>\n"
-  body <+ "\{@ldiff.side_by_side_html(old~, new~)}"
+  body <+ "\{@html.side_by_side_html(old~, new~)}"
   body <+ "<h3>Unified view</h3>\n"
-  body <+ "\{@ldiff.unified_html(old~, new~)}"
+  body <+ "\{@html.unified_html(old~, new~)}"
   t.write(
-    @ldiff.html_page(title="html fallback resource path", body.to_string()),
+    @html.html_page(title="html fallback resource path", body.to_string()),
   )
   t.snapshot(filename="html_fallback_resource_path.html")
 }

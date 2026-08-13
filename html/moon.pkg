@@ -1,4 +1,7 @@
 import {
   "moonbit-community/ldiff",
+}
+
+import {
   "moonbitlang/core/test",
 } for "test"

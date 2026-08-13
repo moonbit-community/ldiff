@@ -296,32 +296,10 @@ fn file_diff_view(
   }
   match (file.old_side, file.new_side) {
     (Ready(old), Ready(new)) => {
-      let rendered = match (file.diff_mode, mode) {
-        (MoonBitDiff, Split) =>
-          @ldiff.side_by_side_html(
-            old~,
-            new~,
-            context=3,
-            line_cleanup=true,
-            line_numbers=true,
-          )
-        (MoonBitDiff, Unified) =>
-          @ldiff.unified_html(
-            old~,
-            new~,
-            context=3,
-            line_cleanup=true,
-            line_numbers=true,
-          )
-        (LineDiff, Split) =>
-          @ldiff.side_by_side_line_html(
-            old~,
-            new~,
-            context=3,
-            line_numbers=true,
-          )
-        (LineDiff, Unified) =>
-          @ldiff.unified_line_html(old~, new~, context=3, line_numbers=true)
+      let document = file_diff_document(file.diff_mode, old, new)
+      let rendered = match mode {
+        Split => @ldiff_html.render_side_by_side(document, line_numbers=true)
+        Unified => @ldiff_html.render_unified(document, line_numbers=true)
       }
       // `rendered` is the only raw HTML accepted by the application. ldiff
       // has already escaped every source line and hunk header.
@@ -427,42 +405,17 @@ fn analysis_file_hunks_html(
   guard (file.old_side, file.new_side) is (Ready(old), Ready(new)) else {
     return []
   }
-  let hunk_notes = notes_for_file(result, file, file_index)
-  match (file.diff_mode, mode) {
-    (MoonBitDiff, Split) =>
-      @ldiff.side_by_side_hunks_html(
-        old~,
-        new~,
-        context=3,
-        line_cleanup=true,
+  let document = file_diff_document(file.diff_mode, old, new)
+  let hunk_notes = notes_for_file(result, file_index, document.hunks.length())
+  match mode {
+    Split =>
+      @ldiff_html.render_side_by_side_hunks(
+        document,
         line_numbers=true,
         hunk_notes~,
       )
-    (MoonBitDiff, Unified) =>
-      @ldiff.unified_hunks_html(
-        old~,
-        new~,
-        context=3,
-        line_cleanup=true,
-        line_numbers=true,
-        hunk_notes~,
-      )
-    (LineDiff, Split) =>
-      @ldiff.side_by_side_line_hunks_html(
-        old~,
-        new~,
-        context=3,
-        line_numbers=true,
-        hunk_notes~,
-      )
-    (LineDiff, Unified) =>
-      @ldiff.unified_line_hunks_html(
-        old~,
-        new~,
-        context=3,
-        line_numbers=true,
-        hunk_notes~,
-      )
+    Unified =>
+      @ldiff_html.render_unified_hunks(document, line_numbers=true, hunk_notes~)
   }
 }
 
