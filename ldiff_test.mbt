@@ -68,7 +68,7 @@ test "split view: alignment, highlights, escaping" {
       "fn total(items : Array[Item], tax~ : Int) -> Int {", "  let mut sum = 0 // running total",
       "  sum + tax", "}",
     ][:]
-  let html = @ldiff.side_by_side_html(old~, new~, context=1)
+  let html = @ldiff_html.side_by_side_html(old~, new~, context=1)
   // paired rows carry word-level highlights
   assert_true(html.contains("<b class=\"wa\">"))
   // the unrelated comment line remains an unpaired deletion; the accepted
@@ -79,7 +79,7 @@ test "split view: alignment, highlights, escaping" {
     ),
   )
   // escaping
-  let esc_html = @ldiff.side_by_side_html(old=["if a < b && c > d {"], new=[
+  let esc_html = @ldiff_html.side_by_side_html(old=["if a < b && c > d {"], new=[
     "if a <= b && c > d {",
   ])
   assert_true(esc_html.contains("&lt;"))
@@ -90,7 +90,7 @@ test "split view: alignment, highlights, escaping" {
 test "whitespace-only edit runs avoid strong intraline highlights" {
   let old_indent = "  let value = item"
   let new_indent = "    let value = item"
-  let split = @ldiff.side_by_side_html(
+  let split = @ldiff_html.side_by_side_html(
     old=[old_indent],
     new=[new_indent],
     context=0,
@@ -101,7 +101,7 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
     ),
   )
   assert_false(split.contains("<b class="))
-  let unified = @ldiff.unified_html(
+  let unified = @ldiff_html.unified_html(
     old=[old_indent],
     new=[new_indent],
     context=0,
@@ -110,7 +110,7 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
   assert_true(unified.contains("<span class=\"add\">+\{new_indent}</span>"))
   assert_false(unified.contains("<b class="))
 
-  let mixed = @ldiff.side_by_side_html(
+  let mixed = @ldiff_html.side_by_side_html(
     old=["  let old = 1"],
     new=["    let new = 1"],
     context=0,
@@ -123,11 +123,11 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
 
   for pair in [("f( x)", "f(x)"), ("f(x)", "f( x)")] {
     let (old, new) = pair
-    let spacing = @ldiff.side_by_side_html(old=[old], new=[new], context=0)
+    let spacing = @ldiff_html.side_by_side_html(old=[old], new=[new], context=0)
     assert_false(spacing.contains("<b class="))
   }
 
-  let phrase = @ldiff.side_by_side_html(
+  let phrase = @ldiff_html.side_by_side_html(
     old=["pub fn f()"],
     new=["pub fn f(a : Int)"],
     context=0,
@@ -137,7 +137,7 @@ test "whitespace-only edit runs avoid strong intraline highlights" {
 
 ///|
 test "semantic highlights exclude boundary whitespace in both HTML views" {
-  let count_split = @ldiff.side_by_side_html(
+  let count_split = @ldiff_html.side_by_side_html(
     old=["count"],
     new=["count + tax"],
     context=0,
@@ -147,7 +147,7 @@ test "semantic highlights exclude boundary whitespace in both HTML views" {
       "<td class=\"del\">count</td><td class=\"add\">count <b class=\"wa\">+ tax</b></td>",
     ),
   )
-  let count_unified = @ldiff.unified_html(
+  let count_unified = @ldiff_html.unified_html(
     old=["count"],
     new=["count + tax"],
     context=0,
@@ -158,7 +158,7 @@ test "semantic highlights exclude boundary whitespace in both HTML views" {
     ),
   )
 
-  let parameter_split = @ldiff.side_by_side_html(
+  let parameter_split = @ldiff_html.side_by_side_html(
     old=["f()"],
     new=["f( a : Int )"],
     context=0,
@@ -168,7 +168,7 @@ test "semantic highlights exclude boundary whitespace in both HTML views" {
       "<td class=\"del\">f()</td><td class=\"add\">f( <b class=\"wa\">a : Int</b> )</td>",
     ),
   )
-  let parameter_unified = @ldiff.unified_html(
+  let parameter_unified = @ldiff_html.unified_html(
     old=["f()"],
     new=["f( a : Int )"],
     context=0,
@@ -185,7 +185,7 @@ test "budget fallbacks render plain rows" {
   // per-line token cap
   let big_old = "word ".repeat(600) + "same tail here"
   let big_new = "word ".repeat(600) + "same tail CHANGED"
-  let html = @ldiff.side_by_side_html(old=[big_old], new=[big_new])
+  let html = @ldiff_html.side_by_side_html(old=[big_old], new=[big_new])
   assert_false(html.contains("<b class="))
   // total cell budget
   let old_lines : Array[String] = []
@@ -195,7 +195,7 @@ test "budget fallbacks render plain rows" {
     old_lines.push(base)
     new_lines.push(base + " tail")
   }
-  let html2 = @ldiff.side_by_side_html(old=old_lines, new=new_lines)
+  let html2 = @ldiff_html.side_by_side_html(old=old_lines, new=new_lines)
   assert_false(html2.contains("<b class="))
 }
 
@@ -248,7 +248,7 @@ test "comment line does not pair with a declaration" {
 
 ///|
 test "split view: blank-but-present vs absent cells" {
-  let html = @ldiff.side_by_side_html(old=["foo(1)", "", "bar(2)"], new=[
+  let html = @ldiff_html.side_by_side_html(old=["foo(1)", "", "bar(2)"], new=[
     "foo(9)", "zzz qqq www",
   ])
   assert_true(html.contains("<td class=\"del\"></td>"))
@@ -259,7 +259,7 @@ test "split view: blank-but-present vs absent cells" {
 test "unified view mirrors the split alignment" {
   let old = ["let total = a + b // sum", "unrelated_one"][:]
   let new = ["let sum = a + b // sum", "other_entirely stuff"][:]
-  let html = @ldiff.unified_html(old~, new~, context=0)
+  let html = @ldiff_html.unified_html(old~, new~, context=0)
   // paired replacement: highlighted rename, deletions before insertions
   assert_true(html.contains("<b class=\"wd\">total</b>"))
   assert_true(html.contains("<b class=\"wa\">sum</b>"))
@@ -273,18 +273,18 @@ test "line numbers are opt-in and preserve legacy HTML when disabled" {
   let old = ["a", "old", "same", "gone", "z"]
   let new = ["a", "new", "same", "added", "z"]
   assert_eq(
-    @ldiff.side_by_side_html(old~, new~, context=1),
-    @ldiff.side_by_side_html(old~, new~, context=1, line_numbers=false),
+    @ldiff_html.side_by_side_html(old~, new~, context=1),
+    @ldiff_html.side_by_side_html(old~, new~, context=1, line_numbers=false),
   )
   assert_eq(
-    @ldiff.unified_html(old~, new~, context=1),
-    @ldiff.unified_html(old~, new~, context=1, line_numbers=false),
+    @ldiff_html.unified_html(old~, new~, context=1),
+    @ldiff_html.unified_html(old~, new~, context=1, line_numbers=false),
   )
 }
 
 ///|
 test "numbered split has four columns and complete old and new positions" {
-  let html = @ldiff.side_by_side_html(
+  let html = @ldiff_html.side_by_side_html(
     old=["ctx", "old <tag>", "", "tail"],
     new=["ctx", "new & value", "inserted", "tail"],
     context=1,
@@ -319,7 +319,7 @@ test "numbered split has four columns and complete old and new positions" {
 test "numbered unified has three columns across replacements and multiple hunks" {
   let old = ["0", "old", "2", "3", "4", "5", "6", "gone", "8"]
   let new = ["0", "new", "2", "3", "4", "5", "6", "added", "8"]
-  let html = @ldiff.unified_html(
+  let html = @ldiff_html.unified_html(
     old~,
     new~,
     context=0,
@@ -353,7 +353,7 @@ test "numbered unified has three columns across replacements and multiple hunks"
 ///|
 test "numbered pure add and delete use an empty number cell for the absent side" {
   inspect(
-    @ldiff.side_by_side_html(
+    @ldiff_html.side_by_side_html(
       old=[],
       new=["名", ""],
       context=0,
@@ -368,7 +368,7 @@ test "numbered pure add and delete use an empty number cell for the absent side"
       #|
     ),
   )
-  let deleted = @ldiff.unified_html(
+  let deleted = @ldiff_html.unified_html(
     old=["x", ""],
     new=[],
     context=0,

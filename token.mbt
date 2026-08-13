@@ -49,8 +49,8 @@ pub fn Tok::text(self : Tok) -> String {
 /// The baseline alignment weight of a token class (integer; all scoring is
 /// integer so results are bit-identical on every backend). Token-level
 /// refinements such as comma downweighting are applied by the internal scorer.
-pub fn weight(k : TokKind) -> Int {
-  match k {
+fn TokKind::weight(self : TokKind) -> Int {
+  match self {
     Word | Str | Marker => 20
     Punct => 6
     Comment => 2
@@ -68,7 +68,7 @@ fn alignment_weight(token : Tok) -> Int {
   if token.kind is Punct && token.text == "," {
     1
   } else {
-    weight(token.kind)
+    token.kind.weight()
   }
 }
 

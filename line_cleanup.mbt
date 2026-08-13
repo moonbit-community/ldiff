@@ -19,14 +19,14 @@
 // group/hunk the intended script without accidentally matching duplicate text.
 
 ///|
-priv struct DiffLine {
+priv struct ComparableLine {
   text : String
   key : (Int, Int)
 } derive(Eq, Hash)
 
 ///|
-fn original_diff_lines(lines : ArrayView[String]) -> Array[DiffLine] {
-  let out : Array[DiffLine] = []
+fn original_diff_lines(lines : ArrayView[String]) -> Array[ComparableLine] {
+  let out : Array[ComparableLine] = []
   for text in lines {
     out.push({ text, key: (0, 0) })
   }
@@ -128,12 +128,12 @@ fn soft_equal_edits(
 fn cleaned_diff_lines(
   old : ArrayView[String],
   new : ArrayView[String],
-) -> (Array[DiffLine], Array[DiffLine]) {
-  let old_lines : Array[DiffLine] = []
+) -> (Array[ComparableLine], Array[ComparableLine]) {
+  let old_lines : Array[ComparableLine] = []
   for i, text in old {
     old_lines.push({ text, key: (0, i) })
   }
-  let new_lines : Array[DiffLine] = []
+  let new_lines : Array[ComparableLine] = []
   for i, text in new {
     new_lines.push({ text, key: (1, i) })
   }
@@ -208,7 +208,7 @@ fn rendering_diff(
   old : ArrayView[String],
   new : ArrayView[String],
   line_cleanup : Bool,
-) -> @diff.Diff[DiffLine] {
+) -> @diff.Diff[ComparableLine] {
   if line_cleanup {
     let (old_lines, new_lines) = cleaned_diff_lines(old, new)
     Diff(old=old_lines, new=new_lines, algorithm=Patience)

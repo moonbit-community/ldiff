@@ -1,5 +1,7 @@
 import {
   "moonbit-community/ldiff",
+  "moonbit-community/ldiff/html" @ldiff_html,
+  "moonbit-community/ldiff/text" @ldiff_text,
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/clipboard",
   "moonbit-community/rabbita/cmd",

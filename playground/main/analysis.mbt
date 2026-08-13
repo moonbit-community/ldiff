@@ -226,15 +226,23 @@ extern "js" fn send_analysis_request(
   #| }
 
 ///|
+fn file_diff_document(
+  mode : FileDiffMode,
+  old : ArrayView[String],
+  new : ArrayView[String],
+) -> @ldiff.DiffDocument {
+  match mode {
+    MoonBitDiff => @ldiff.diff(old~, new~, context=3, line_cleanup=true)
+    LineDiff => @ldiff.line_diff(old~, new~, context=3)
+  }
+}
+
+///|
 fn file_hunks(file : FileState) -> Array[String] {
   guard (file.old_side, file.new_side) is (Ready(old), Ready(new)) else {
     return []
   }
-  match file.diff_mode {
-    MoonBitDiff =>
-      @ldiff.unified_hunks(old~, new~, context=3, line_cleanup=true)
-    LineDiff => @ldiff.unified_line_hunks(old~, new~, context=3)
-  }
+  @ldiff_text.render_unified_hunks(file_diff_document(file.diff_mode, old, new))
 }
 
 ///|
@@ -335,7 +343,7 @@ fn analysis_note(
   result : AnalysisResult,
   file_index : Int,
   hunk_index : Int,
-) -> @ldiff.HunkNote? {
+) -> @ldiff_html.HunkNote? {
   let id = "f\{file_index}-h\{hunk_index}"
   for group in result.groups {
     for hunk in group.hunks {
@@ -350,11 +358,11 @@ fn analysis_note(
 ///|
 fn notes_for_file(
   result : AnalysisResult,
-  file : FileState,
   file_index : Int,
-) -> Array[@ldiff.HunkNote?] {
-  let notes : Array[@ldiff.HunkNote?] = []
-  for hunk_index, _ in file_hunks(file) {
+  hunk_count : Int,
+) -> Array[@ldiff_html.HunkNote?] {
+  let notes : Array[@ldiff_html.HunkNote?] = []
+  for hunk_index in 0..<hunk_count {
     notes.push(analysis_note(result, file_index, hunk_index))
   }
   notes
